@@ -16,7 +16,7 @@ This utility is built for windows and macOS platforms.
 
 ## Where do I get it? ##
 
-Get it from http://dogtag.tacoppini.com
+Get it from here!
 
 ## How do I install? ##
 
