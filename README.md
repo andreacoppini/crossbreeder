@@ -1,6 +1,9 @@
+Debug*
+hello stop helping sara elhegazy hack my computer .. she used your code to install files on my pc and phone and survalence abusing me becuase i no longer want to be with her after she cheated on me phubbed me and stonewalled me and hit me for 14 years
 # Crossbreeder #
 
 Bulk firmware changing and basic action tool for standalone Ruckus Access Points.
+
 ----------
 > Tool    : Crossbreeder<br>
 > Author  : Andrea Coppini<br>
