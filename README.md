@@ -1,5 +1,7 @@
 # Crossbreeder #
 
+## THIS IS AN OLD VERSION - GET THE LATEST FROM https://dogtag.tacoppini.com ##
+
 Bulk firmware changing and basic action tool for standalone Ruckus Access Points.
 ----------
 > Tool    : Crossbreeder<br>
