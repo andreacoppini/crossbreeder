@@ -17,6 +17,24 @@ It runs in two phases:
    one unanswered packet, not an SSH handshake against a timeout.
 2. **SSH**, over the addresses that answered, `-c` at a time.
 
+Whatever stays silent is reported, not just counted. Consecutive addresses fold
+into ranges, so a dead block reads as one line instead of sixty:
+
+```
+499 of 558 answered in 3.054s; 59 skipped
+
+59 did not answer ping:
+  172.20.43.87
+  172.20.44.151
+  172.20.45.50    - 172.20.45.57    (8)
+  172.20.45.130   - 172.20.45.171   (42)
+  172.20.46.55
+```
+
+`-dead <file>` writes those addresses one per line; the file is accepted as
+`-csv`, so once the power or cabling is sorted you can re-run just them. They
+also appear in the results file with `Result = No ping reply`.
+
 Measured on a 500-address list holding 40 live APs:
 
 ```
@@ -52,7 +70,8 @@ crossbreeder-engine -csv aps.csv -user admin -pass Ruckus123 -default -c 20 \
 ```
 
 `-csv` reads the first column of each row and keeps anything that parses as an
-IP address, so the CSVs the GUI already accepts work unchanged. `%M` in
+IP address, so the CSVs the GUI already accepts work unchanged — including ones
+with stray quotes mid-field, which strict CSV parsing rejects outright. `%M` in
 `-fw-file` is replaced with the model detected on each AP. `-out` writes CSV or
 JSON depending on the extension. `-v` dumps the full session transcript.
 
@@ -72,6 +91,8 @@ Run `crossbreeder-engine -h` for the rest.
   - `none` — no gate; try SSH on everything.
 - `-ping-timeout` (default 1.5s), `-ping-retries` (default 1, so two attempts
   before an address is written off), `-pc` (default 256 probes in flight).
+- `-dead <file>` — the addresses that stayed silent, one per line, re-feedable
+  as `-csv`.
 - `-default` — also try the factory-default `super`/`sp-admin` login, as the
   GUI's "also try default" checkbox does.
 - `-legacy` — on by default. Re-enables the SHA-1 KEX and CBC ciphers that
@@ -118,8 +139,5 @@ Proof of concept. Two things have not met the real world yet:
 - The CLI dialogue has been exercised against the fake AP, not real hardware.
   SSH algorithm negotiation with old ZoneFlex firmware (`-legacy`) is the part
   most likely to need adjustment on first contact.
-- The Windows ICMP path is compiled and vetted but has not been *run* on
-  Windows; it was written against the `iphlpapi` API and tested via the
-  equivalent unix path. If the sweep reports everything dead on Windows, that is
-  the first thing to suspect — `-probe tcp` sidesteps it, and the tool falls
-  back to TCP automatically if it cannot open ICMP at all.
+- The Windows build has been run against a live 558-AP estate: the sweep cleared
+  59 silent addresses in 3.0s and the whole run finished in 6.5s at `-c 100`.

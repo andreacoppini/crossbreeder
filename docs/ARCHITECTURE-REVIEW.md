@@ -186,6 +186,14 @@ Both of those numbers already have the SSH phase running 40-wide. The serial
 tool on the same list would spend roughly 460 × 1s working through the dead
 addresses before it reached the live ones.
 
+And on real hardware — a live 558-AP estate, Windows client:
+
+```
+Probing 558 addresses (icmp, 1.5s timeout, 1 retries, 256 at a time)...
+499 of 558 answered in 3.054s; 59 skipped
+558 addresses, 499 alive, 499 contacted in 6.548s
+```
+
 The sweep's own bound is measured too: 300 genuinely silent addresses (TEST-NET,
 RFC 5737) clear in ~3s against a serial cost of 7m30s. Full test run:
 
@@ -206,13 +214,11 @@ The lowest-risk order, each step shippable on its own:
 1. **Take the engine as a CLI.** It already replaces the batch use case, and it
    is scriptable and CI-able in a way the GUI never was. Nothing has to change
    in the Xojo app for this to be useful.
-2. **Validate against real hardware** — one ZoneFlex and one Unleashed AP. Two
-   things the fake cannot cover: SSH algorithm negotiation, since pre-2015
-   ZoneFlex firmware needs the SHA-1 KEX and CBC ciphers modern stacks disable
-   by default (`-legacy`, on by default, re-enables them), and the Windows ICMP
-   path, which goes through `iphlpapi.IcmpSendEcho` — the unprivileged API
-   `ping.exe` itself uses — and has been compiled and vetted but not yet run on
-   Windows.
+2. **Validate against real hardware.** Done for the 7.x estate — 558 APs
+   (R350, R670, H550, T350C/SE) inventoried from Windows in 6.5s, including the
+   `iphlpapi` ICMP path. Still untested: pre-2015 ZoneFlex firmware, which needs
+   the SHA-1 KEX and CBC ciphers modern SSH stacks disable by default
+   (`-legacy`, on by default, re-enables them), and the Unleashed dialect.
 3. **Point the existing UI at the engine** if you want to keep the Xojo front
    end: shell out to the binary and read its JSON. That gets the concurrency
    into the GUI immediately, with no Xojo threading involved.

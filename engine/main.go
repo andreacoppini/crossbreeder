@@ -50,6 +50,7 @@ type options struct {
 	showVers bool
 
 	probe           string
+	deadOut         string
 	pingTimeout     time.Duration
 	pingRetries     int
 	pingConcurrency int
@@ -111,7 +112,7 @@ func run(opt options) error {
 	// Phase 1 — reachability. On a site list where most addresses are dead this
 	// is what keeps the run short: a dead address costs one unanswered echo
 	// request, not a TCP connect and an SSH handshake against a timeout.
-	alive, pings := sweep(ctx, hosts, opt)
+	alive, dead, pings := sweep(ctx, hosts, opt)
 
 	// Phase 2 — SSH, over the survivors only.
 	byHost := make(map[string]ap.Result, len(alive))
@@ -148,18 +149,38 @@ func run(opt options) error {
 			results[i] = r
 			continue
 		}
-		results[i] = ap.Result{IP: h, Status: "Skipped", PingMS: float64(p.RTT.Microseconds()) / 1000.0}
+		results[i] = ap.Result{IP: h, Status: noReplyStatus(opt.probe), PingMS: float64(p.RTT.Microseconds()) / 1000.0}
 	}
 
 	fmt.Fprintf(os.Stderr, "\n%d addresses, %d alive, %d contacted in %s\n",
 		len(hosts), len(alive), len(byHost), time.Since(overall).Round(time.Millisecond))
 
+	if err := writeDeadList(opt.deadOut, dead); err != nil {
+		return err
+	}
+	if opt.deadOut != "" && len(dead) > 0 {
+		fmt.Fprintf(os.Stderr, "%d silent addresses written to %s\n", len(dead), opt.deadOut)
+	}
+
 	return writeResults(opt.out, results)
+}
+
+// noReplyStatus names why an address was skipped, in the terms of the check
+// that skipped it.
+func noReplyStatus(probe string) string {
+	switch probe {
+	case "icmp":
+		return "No ping reply"
+	case "tcp":
+		return "No SSH port"
+	default:
+		return "No response"
+	}
 }
 
 // sweep runs the reachability pass and returns the addresses worth an SSH
 // session, plus the raw result for every address so dead rows keep their timing.
-func sweep(ctx context.Context, hosts []string, opt options) ([]string, map[string]ap.PingResult) {
+func sweep(ctx context.Context, hosts []string, opt options) ([]string, []string, map[string]ap.PingResult) {
 	mode := ap.ProbeMode(opt.probe)
 	opts := ap.SweepOptions{
 		Mode:        mode,
@@ -170,7 +191,7 @@ func sweep(ctx context.Context, hosts []string, opt options) ([]string, map[stri
 	}
 	if mode == ap.ProbeNone {
 		fmt.Fprintf(os.Stderr, "Skipping reachability check, trying all %d addresses\n", len(hosts))
-		return hosts, map[string]ap.PingResult{}
+		return hosts, nil, map[string]ap.PingResult{}
 	}
 
 	start := time.Now()
@@ -190,18 +211,18 @@ func sweep(ctx context.Context, hosts []string, opt options) ([]string, map[stri
 	}
 
 	alive := make([]string, 0, len(hosts))
+	dead := make([]string, 0)
 	for _, h := range hosts {
 		if res[h].Alive {
 			alive = append(alive, h)
-			continue
-		}
-		if opt.verbose {
-			fmt.Fprintf(os.Stderr, "  %-15s no response\n", h)
+		} else {
+			dead = append(dead, h)
 		}
 	}
 	fmt.Fprintf(os.Stderr, "%d of %d answered in %s; %d skipped\n\n",
-		len(alive), len(hosts), time.Since(start).Round(time.Millisecond), len(hosts)-len(alive))
-	return alive, res
+		len(alive), len(hosts), time.Since(start).Round(time.Millisecond), len(dead))
+	reportDead(os.Stderr, dead, string(opts.Mode), opt.verbose)
+	return alive, dead, res
 }
 
 func loadHosts(path string) ([]string, error) {
@@ -213,6 +234,10 @@ func loadHosts(path string) ([]string, error) {
 
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1 // rows may carry extra columns; only the first matters
+	// Exported AP lists routinely carry stray quotes mid-field. Nothing here
+	// depends on strict quoting, and refusing the whole file over one is worse
+	// than reading it.
+	r.LazyQuotes = true
 	var hosts []string
 	seen := map[string]bool{}
 	for {

@@ -26,6 +26,7 @@ func parseFlags() options {
 	flag.BoolVar(&o.reboot, "reboot", false, "reboot the AP when finished")
 	flag.StringVar(&o.command, "cmd", "", "run an arbitrary AP CLI command")
 
+	flag.StringVar(&o.deadOut, "dead", "", "write the addresses that did not answer to this file, one per line (re-feedable as -csv)")
 	flag.StringVar(&o.probe, "probe", "icmp", "reachability check before SSH: icmp, tcp, both or none")
 	flag.DurationVar(&o.pingTimeout, "ping-timeout", 1500*time.Millisecond, "per-attempt reachability timeout")
 	flag.IntVar(&o.pingRetries, "ping-retries", 1, "extra attempts for addresses that stayed silent")
