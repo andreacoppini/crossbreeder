@@ -284,14 +284,18 @@ func TestFallbackToDefaultCredentials(t *testing.T) {
 	}
 }
 
-func TestUnreachableHostIsNotFatal(t *testing.T) {
-	// Port 1 on loopback refuses immediately.
+// Reachability is the sweep's job now, but a host that answered the sweep and
+// then refuses SSH must still come back as a row rather than a panic.
+func TestRefusedSSHIsNotFatal(t *testing.T) {
 	cfg := testConfig()
-	cfg.Port = "1"
+	cfg.Port = "1" // nothing listening
 	cfg.ConnectTimeout = time.Second
 	r := Run(t.Context(), "127.0.0.1", cfg)
-	if r.Status != "Unreachable" {
-		t.Fatalf("status = %q, want Unreachable", r.Status)
+	if r.Status != "SSH Failed" {
+		t.Fatalf("status = %q, want SSH Failed", r.Status)
+	}
+	if r.Error == "" {
+		t.Error("expected an error message")
 	}
 }
 

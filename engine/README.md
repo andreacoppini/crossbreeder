@@ -9,6 +9,21 @@ It does the same job as `ChangeFW.Run` in the Xojo project — walk a CSV of
 standalone Ruckus APs, collect inventory, optionally push firmware, reset,
 run a command or reboot — with the APs worked in parallel.
 
+It runs in two phases:
+
+1. **Ping sweep.** Every address gets an ICMP echo request, hundreds at a time,
+   with a 1.5s timeout and one retry. On a site list where most addresses are
+   dead — the normal case — this is where the run is won: a dead address costs
+   one unanswered packet, not an SSH handshake against a timeout.
+2. **SSH**, over the addresses that answered, `-c` at a time.
+
+Measured on a 500-address list holding 40 live APs:
+
+```
+ping sweep + SSH   6.6s      (460 skipped in the sweep, 40 contacted)
+no gate (-probe none)  1m36s  (SSH attempted against all 500)
+```
+
 ## Build
 
 ```
@@ -45,9 +60,18 @@ Run `crossbreeder-engine -h` for the rest.
 
 ### Flags worth knowing
 
-- `-c` — how many APs at once. Default 25. For inventory and CLI work 50–100 is
-  fine; for firmware pushes keep it to what your image server and uplink can
-  carry, since every AP downloads at once.
+- `-c` — how many APs at once in the SSH phase. Default 25. For inventory and
+  CLI work 50–100 is fine; for firmware pushes keep it to what your image server
+  and uplink can carry, since every AP downloads at once.
+- `-probe` — how an address is judged alive before it costs an SSH session:
+  - `icmp` (default) — ping, which is the cheapest way to drop a dead list.
+  - `tcp` — connect to the SSH port instead. Use where ICMP is filtered.
+  - `both` — alive if either answers. Slower on dead addresses (it waits for the
+    ping, then the connect), but it will not skip an AP that is up with ICMP
+    blocked by an ACL.
+  - `none` — no gate; try SSH on everything.
+- `-ping-timeout` (default 1.5s), `-ping-retries` (default 1, so two attempts
+  before an address is written off), `-pc` (default 256 probes in flight).
 - `-default` — also try the factory-default `super`/`sp-admin` login, as the
   GUI's "also try default" checkbox does.
 - `-legacy` — on by default. Re-enables the SHA-1 KEX and CBC ciphers that
@@ -57,9 +81,12 @@ Run `crossbreeder-engine -h` for the rest.
 
 ## Differences from the Xojo version
 
-- Reachability is a TCP connect to the SSH port rather than a shell-out to
-  `ping`. It costs no process, does not parse localised console text, and tests
-  the thing we actually need.
+- The ping sweep is in-process ICMP, not a shell-out to `ping.exe`. No process
+  per address, no parsing of localised console text, and hundreds in flight
+  instead of one at a time. On Windows it goes through `iphlpapi`'s
+  `IcmpSendEcho` — the same unprivileged path `ping.exe` uses, so no
+  administrator rights are needed; on macOS and Linux it uses an ICMP datagram
+  socket, falling back to a raw socket when run as root.
 - `set factory` and `reboot` run **last**. The original issued `set factory`
   before the firmware commands, which on a real AP discards them.
 - The ZoneFlex and Unleashed paths are one code path parameterised by prompt
@@ -78,8 +105,21 @@ Ruckus CLI, so the login fallback, both AP dialects, `%M` templating and the
 command sequence are all covered without hardware. `TestConcurrencyBeatsSerial`
 measures the fan-out rather than asserting it.
 
+`ap/ping_test.go` sweeps TEST-NET addresses (RFC 5737), which are genuinely
+silent, so the timeout and retry behaviour is exercised for real:
+`TestSweepDeadListIsBoundedByOneTimeout` clears 300 dead addresses in ~3s
+against a serial cost of 7m30s. The ICMP tests skip themselves where the
+platform will not hand out an ICMP socket.
+
 ## Status
 
-Proof of concept. The dialogue has been exercised against the fake AP, not
-against real hardware — SSH algorithm negotiation with old ZoneFlex firmware is
-the part most likely to need adjustment on first contact.
+Proof of concept. Two things have not met the real world yet:
+
+- The CLI dialogue has been exercised against the fake AP, not real hardware.
+  SSH algorithm negotiation with old ZoneFlex firmware (`-legacy`) is the part
+  most likely to need adjustment on first contact.
+- The Windows ICMP path is compiled and vetted but has not been *run* on
+  Windows; it was written against the `iphlpapi` API and tested via the
+  equivalent unix path. If the sweep reports everything dead on Windows, that is
+  the first thing to suspect — `-probe tcp` sidesteps it, and the tool falls
+  back to TCP automatically if it cannot open ICMP at all.

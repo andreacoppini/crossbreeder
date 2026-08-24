@@ -26,6 +26,11 @@ func parseFlags() options {
 	flag.BoolVar(&o.reboot, "reboot", false, "reboot the AP when finished")
 	flag.StringVar(&o.command, "cmd", "", "run an arbitrary AP CLI command")
 
+	flag.StringVar(&o.probe, "probe", "icmp", "reachability check before SSH: icmp, tcp, both or none")
+	flag.DurationVar(&o.pingTimeout, "ping-timeout", 1500*time.Millisecond, "per-attempt reachability timeout")
+	flag.IntVar(&o.pingRetries, "ping-retries", 1, "extra attempts for addresses that stayed silent")
+	flag.IntVar(&o.pingConcurrency, "pc", 256, "how many addresses to probe at once")
+
 	flag.StringVar(&o.sshPort, "port", "22", "SSH port")
 	flag.DurationVar(&o.timeout, "timeout", 8*time.Second, "per-step timeout")
 	flag.BoolVar(&o.legacy, "legacy", true, "allow the SHA-1/CBC algorithms old ZoneFlex firmware needs")

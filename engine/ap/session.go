@@ -75,7 +75,7 @@ type Config struct {
 type Result struct {
 	IP         string        `json:"ip"`
 	Reachable  bool          `json:"reachable"`
-	ProbeMS    float64       `json:"probe_ms"`
+	PingMS     float64       `json:"ping_ms"`
 	MAC        string        `json:"mac,omitempty"`
 	Model      string        `json:"model,omitempty"`
 	Firmware   string        `json:"firmware,omitempty"`
@@ -130,22 +130,6 @@ var unleashed = dialect{
 	},
 }
 
-// Probe does a TCP connect to the SSH port and reports the round-trip. It
-// replaces the original's shell-out to the OS ping binary, which cost a process
-// per AP, parsed localized console text, and told us nothing about whether SSH
-// was actually listening.
-func Probe(ctx context.Context, host, port string, timeout time.Duration) (bool, float64) {
-	d := net.Dialer{Timeout: timeout}
-	start := time.Now()
-	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
-	elapsed := float64(time.Since(start).Microseconds()) / 1000.0
-	if err != nil {
-		return false, elapsed
-	}
-	_ = conn.Close()
-	return true, elapsed
-}
-
 // Run drives one AP to completion. It never touches shared state, so N of these
 // may be in flight at once.
 func Run(ctx context.Context, host string, cfg Config) Result {
@@ -160,13 +144,9 @@ func Run(ctx context.Context, host string, cfg Config) Result {
 		r.DurationMS = r.Duration.Milliseconds()
 	}()
 
-	ok, ms := Probe(ctx, host, cfg.Port, cfg.ConnectTimeout)
-	r.Reachable, r.ProbeMS = ok, ms
-	if !ok {
-		r.Status = "Unreachable"
-		return r
-	}
-
+	// Reachability is settled by the sweep before we get here (see Sweep in
+	// ping.go); this is the address list already filtered down to what answered.
+	r.Reachable = true
 	if err := run(ctx, host, cfg, &r); err != nil {
 		if r.Status == "Skipped" {
 			r.Status = "Error"

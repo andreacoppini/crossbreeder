@@ -48,6 +48,11 @@ type options struct {
 	legacy   bool
 	verbose  bool
 	showVers bool
+
+	probe           string
+	pingTimeout     time.Duration
+	pingRetries     int
+	pingConcurrency int
 }
 
 func main() {
@@ -101,32 +106,102 @@ func run(opt options) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	var mu sync.Mutex
-	done := 0
-	start := time.Now()
+	overall := time.Now()
 
-	rn := &Runner{
-		Concurrency: opt.concurrency,
-		Config:      cfg,
-		OnResult: func(_ int, r ap.Result) {
-			mu.Lock()
-			done++
-			n := done
-			mu.Unlock()
-			fmt.Fprintf(os.Stderr, "[%d/%d] %-15s %-12s %-10s %-14s %s\n",
-				n, len(hosts), r.IP, r.Status, r.Model, r.Firmware, r.Error)
-			if opt.verbose && r.Transcript != "" {
-				fmt.Fprintf(os.Stderr, "----- %s -----\n%s\n", r.IP, r.Transcript)
-			}
-		},
+	// Phase 1 — reachability. On a site list where most addresses are dead this
+	// is what keeps the run short: a dead address costs one unanswered echo
+	// request, not a TCP connect and an SSH handshake against a timeout.
+	alive, pings := sweep(ctx, hosts, opt)
+
+	// Phase 2 — SSH, over the survivors only.
+	byHost := make(map[string]ap.Result, len(alive))
+	if len(alive) > 0 {
+		var mu sync.Mutex
+		done := 0
+		rn := &Runner{
+			Concurrency: opt.concurrency,
+			Config:      cfg,
+			OnResult: func(_ int, r ap.Result) {
+				mu.Lock()
+				done++
+				n := done
+				mu.Unlock()
+				fmt.Fprintf(os.Stderr, "[%d/%d] %-15s %-12s %-10s %-14s %s\n",
+					n, len(alive), r.IP, r.Status, r.Model, r.Firmware, r.Error)
+				if opt.verbose && r.Transcript != "" {
+					fmt.Fprintf(os.Stderr, "----- %s -----\n%s\n", r.IP, r.Transcript)
+				}
+			},
+		}
+		for _, r := range rn.Run(ctx, alive) {
+			byHost[r.IP] = r
+		}
 	}
 
-	results := rn.Run(ctx, hosts)
-	elapsed := time.Since(start)
+	// Rebuild the full table in input order, so the output still has a row per
+	// address the operator supplied — dead ones included, as the GUI grid does.
+	results := make([]ap.Result, len(hosts))
+	for i, h := range hosts {
+		p := pings[h]
+		if r, ok := byHost[h]; ok {
+			r.PingMS = float64(p.RTT.Microseconds()) / 1000.0
+			results[i] = r
+			continue
+		}
+		results[i] = ap.Result{IP: h, Status: "Skipped", PingMS: float64(p.RTT.Microseconds()) / 1000.0}
+	}
 
-	fmt.Fprintf(os.Stderr, "\n%d APs in %s (%d workers)\n", len(hosts), elapsed.Round(time.Millisecond), opt.concurrency)
+	fmt.Fprintf(os.Stderr, "\n%d addresses, %d alive, %d contacted in %s\n",
+		len(hosts), len(alive), len(byHost), time.Since(overall).Round(time.Millisecond))
 
 	return writeResults(opt.out, results)
+}
+
+// sweep runs the reachability pass and returns the addresses worth an SSH
+// session, plus the raw result for every address so dead rows keep their timing.
+func sweep(ctx context.Context, hosts []string, opt options) ([]string, map[string]ap.PingResult) {
+	mode := ap.ProbeMode(opt.probe)
+	opts := ap.SweepOptions{
+		Mode:        mode,
+		Timeout:     opt.pingTimeout,
+		Retries:     opt.pingRetries,
+		Concurrency: opt.pingConcurrency,
+		SSHPort:     opt.sshPort,
+	}
+	if mode == ap.ProbeNone {
+		fmt.Fprintf(os.Stderr, "Skipping reachability check, trying all %d addresses\n", len(hosts))
+		return hosts, map[string]ap.PingResult{}
+	}
+
+	start := time.Now()
+	fmt.Fprintf(os.Stderr, "Probing %d addresses (%s, %v timeout, %d retries, %d at a time)...\n",
+		len(hosts), mode, opt.pingTimeout, opt.pingRetries, opt.pingConcurrency)
+	res := ap.Sweep(ctx, hosts, opts)
+
+	// If ICMP could not be opened at all, every host looks dead, which would
+	// silently skip the whole run. Say so and fall back rather than report a
+	// site full of dead APs.
+	if mode == ap.ProbeICMP {
+		if err := ap.ICMPUnavailable(); err != nil {
+			fmt.Fprintf(os.Stderr, "ICMP unavailable (%v)\n  falling back to a TCP probe on port %s; use -probe tcp to silence this\n", err, opt.sshPort)
+			opts.Mode = ap.ProbeTCP
+			res = ap.Sweep(ctx, hosts, opts)
+		}
+	}
+
+	alive := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		if res[h].Alive {
+			alive = append(alive, h)
+			continue
+		}
+		if opt.verbose {
+			fmt.Fprintf(os.Stderr, "  %-15s no response\n", h)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "%d of %d answered in %s; %d skipped\n\n",
+		len(alive), len(hosts), time.Since(start).Round(time.Millisecond), len(hosts)-len(alive))
+	return alive, res
 }
 
 func loadHosts(path string) ([]string, error) {
@@ -180,15 +255,15 @@ func writeResults(path string, results []ap.Result) error {
 
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Probe (ms)", "Result", "Error"}); err != nil {
+	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Error"}); err != nil {
 		return err
 	}
 	for _, r := range results {
-		probe := ""
+		ping := "Timeout"
 		if r.Reachable {
-			probe = fmt.Sprintf("%.1f", r.ProbeMS)
+			ping = fmt.Sprintf("%.1f", r.PingMS)
 		}
-		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, probe, r.Status, r.Error}); err != nil {
+		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.Error}); err != nil {
 			return err
 		}
 	}

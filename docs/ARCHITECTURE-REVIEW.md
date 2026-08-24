@@ -88,8 +88,11 @@ because they are the real reason a rewrite is on the table:
 4. **`Ping` blocks the event loop by design.** It spawns `/bin/ping` or
    `ping.exe` and busy-polls with `App.DoEvents` (`:1222`). That is a process
    spawn per AP, it parses *localised* console text (`"could not find host"`,
-   `"100% loss"`), and it answers the wrong question — we care whether SSH is
-   listening, not whether ICMP is.
+   `"100% loss"`), and — because it is inside the same serial loop — it is
+   itself a large part of the cost. On a site list where most addresses are
+   dead, which is the normal case, the tool spends most of its time waiting out
+   ping timeouts one address at a time. ICMP is the right check; doing it
+   serially, through a subprocess, is not.
 
 ## 4. Other things worth fixing while we're in here
 
@@ -156,8 +159,12 @@ and a preamble.
 It ships with an in-process fake Ruckus AP (`engine/ap/fakeap_test.go`), which
 is what makes the logic testable without a lab.
 
+It runs in two phases, because on a real site list the two costs are different
+problems. An **ICMP sweep** clears the dead addresses hundreds at a time with a
+1.5s timeout, then the **SSH phase** works the survivors at `-c` at a time.
+
 Measured on 60 simulated APs, each with a 500 ms stall, running the real binary
-end to end:
+end to end — this is the SSH phase alone, every address live:
 
 ```
 60 APs in 30.319s  (1 worker  — what the tool does today)
@@ -166,12 +173,31 @@ end to end:
 
 **28.7×**, and the fake APs are far faster to answer than real ones, so the
 field gap would be wider. The unit test measures the same effect at 18.9× under
-the race detector. Full test run:
+the race detector.
+
+Measured on a more realistic list — 500 addresses holding 40 live APs:
+
+```
+ping sweep + SSH        6.6s     (460 skipped by the sweep, 40 contacted)
+no gate (-probe none)  1m36s     (SSH attempted against all 500)
+```
+
+Both of those numbers already have the SSH phase running 40-wide. The serial
+tool on the same list would spend roughly 460 × 1s working through the dead
+addresses before it reached the live ones.
+
+The sweep's own bound is measured too: 300 genuinely silent addresses (TEST-NET,
+RFC 5737) clear in ~3s against a serial cost of 7m30s. Full test run:
 
 ```
 $ cd engine && go test -race ./...
-ok  github.com/andreacoppini/crossbreeder/engine/ap  7.8s
+ok  github.com/andreacoppini/crossbreeder/engine/ap  12.5s
 ```
+
+One caveat that shaped the design: an AP can be up with ICMP blocked by an ACL,
+in which case a pure ping gate would skip it. `-probe both` (alive if ping *or*
+the SSH port answers) exists for that, and `-probe tcp` for sites that filter
+ICMP wholesale.
 
 ## 7. Suggested path
 
@@ -180,11 +206,13 @@ The lowest-risk order, each step shippable on its own:
 1. **Take the engine as a CLI.** It already replaces the batch use case, and it
    is scriptable and CI-able in a way the GUI never was. Nothing has to change
    in the Xojo app for this to be useful.
-2. **Validate against real hardware** — one ZoneFlex and one Unleashed AP. The
-   one thing the fake cannot cover is SSH algorithm negotiation: pre-2015
-   ZoneFlex firmware needs SHA-1 KEX and CBC ciphers that modern stacks disable
-   by default. `-legacy` (on by default) re-enables them; that flag is the most
-   likely thing to need tuning.
+2. **Validate against real hardware** — one ZoneFlex and one Unleashed AP. Two
+   things the fake cannot cover: SSH algorithm negotiation, since pre-2015
+   ZoneFlex firmware needs the SHA-1 KEX and CBC ciphers modern stacks disable
+   by default (`-legacy`, on by default, re-enables them), and the Windows ICMP
+   path, which goes through `iphlpapi.IcmpSendEcho` — the unprivileged API
+   `ping.exe` itself uses — and has been compiled and vetted but not yet run on
+   Windows.
 3. **Point the existing UI at the engine** if you want to keep the Xojo front
    end: shell out to the binary and read its JSON. That gets the concurrency
    into the GUI immediately, with no Xojo threading involved.
