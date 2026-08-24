@@ -324,45 +324,91 @@ func dial(ctx context.Context, host string, cfg Config) (*ssh.Client, error) {
 // login handles the AP's own CLI login, which sits behind the SSH login, and
 // falls back through the remaining credential pairs (typically super/sp-admin
 // on a factory-default AP).
+//
+// It waits for every possible next thing at once rather than assuming an order.
+// Some builds print a login banner, some drop straight to a prompt because the
+// SSH transport login was the only one, and some answer a rejected password
+// with a fresh banner; guessing wrong used to cost a full timeout and then lose
+// the prompt that had already arrived.
 func login(e *expecter, creds []Credentials) (dialect, error) {
-	prompts := []string{"rkscli: ", "> ", "Login incorrect"}
+	if len(creds) == 0 {
+		return dialect{}, fmt.Errorf("no credentials supplied")
+	}
 
-	for i, c := range creds {
-		if _, _, err := e.Expect("ogin:", "sername:"); err != nil {
-			// Some builds drop straight to a prompt with no login banner.
-			if idx, _, err2 := e.Expect(prompts...); err2 == nil && idx < 2 {
-				return dialectFor(idx), nil
-			}
-			return dialect{}, err
-		}
-		if err := e.Send(c.User); err != nil {
-			return dialect{}, err
-		}
-		if _, _, err := e.Expect("assword"); err != nil {
-			return dialect{}, err
-		}
-		if err := e.Send(c.Password); err != nil {
-			return dialect{}, err
-		}
-		idx, _, err := e.Expect(prompts...)
+	const (
+		wantLogin = iota
+		wantUser
+		wantPassword
+		wantIncorrect
+		wantDenied
+		promptZF
+		promptULEnable
+		promptUL
+	)
+	pats := []pat{
+		anywhere("ogin:"),
+		anywhere("sername:"),
+		anywhere("assword"),
+		anywhere("Login incorrect"),
+		anywhere("Permission denied"),
+		atEnd("rkscli: "),
+		atEnd("(ap-mode)# "),
+		atEnd("> "),
+	}
+
+	cred := 0
+	// Bounded so a device that loops its banner cannot spin here forever.
+	for step := 0; step < 4*len(creds)+8; step++ {
+		i, _, err := e.ExpectPats(pats...)
 		if err != nil {
-			return dialect{}, err
+			return dialect{}, fmt.Errorf("%w; last seen: %s", err, tail(e.Pending(), 160))
 		}
-		if idx < 2 {
-			return dialectFor(idx), nil
-		}
-		if i == len(creds)-1 {
-			return dialect{}, fmt.Errorf("login incorrect after %d credential(s)", len(creds))
+
+		switch i {
+		case wantLogin, wantUser:
+			if err := e.Send(creds[cred].User); err != nil {
+				return dialect{}, err
+			}
+		case wantPassword:
+			if err := e.Send(creds[cred].Password); err != nil {
+				return dialect{}, err
+			}
+		case wantIncorrect, wantDenied:
+			cred++
+			if cred >= len(creds) {
+				return dialect{}, fmt.Errorf("AP rejected %s", credSummary(creds))
+			}
+		case promptZF:
+			return zoneFlex, nil
+		case promptULEnable, promptUL:
+			return unleashed, nil
 		}
 	}
-	return dialect{}, fmt.Errorf("no credentials supplied")
+	return dialect{}, fmt.Errorf("could not reach a CLI prompt; last seen: %s", tail(e.Pending(), 160))
 }
 
-func dialectFor(promptIdx int) dialect {
-	if promptIdx == 0 {
-		return zoneFlex
+func credSummary(creds []Credentials) string {
+	names := make([]string, len(creds))
+	for i, c := range creds {
+		names[i] = c.User
 	}
-	return unleashed
+	if len(names) == 1 {
+		return fmt.Sprintf("user %q", names[0])
+	}
+	return fmt.Sprintf("users %s", strings.Join(names, ", "))
+}
+
+// tail returns the last n bytes of s with whitespace collapsed, so a failure
+// reason fits on one line of output next to the AP it came from.
+func tail(s string, n int) string {
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if len(s) > n {
+		s = "..." + s[len(s)-n:]
+	}
+	if s == "" {
+		return "(nothing)"
+	}
+	return s
 }
 
 func exchange(e *expecter, send, want string) error {

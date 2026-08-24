@@ -30,6 +30,8 @@ type options struct {
 	out         string
 	user        string
 	pass        string
+	askPass     bool
+	passEnv     string
 	alsoDefault bool
 	concurrency int
 
@@ -77,9 +79,14 @@ func run(opt options) error {
 		return fmt.Errorf("no IP addresses found in %s", opt.csvPath)
 	}
 
+	password, err := resolvePassword(opt)
+	if err != nil {
+		return err
+	}
+
 	creds := []ap.Credentials{}
 	if opt.user != "" {
-		creds = append(creds, ap.Credentials{User: opt.user, Password: opt.pass})
+		creds = append(creds, ap.Credentials{User: opt.user, Password: password})
 	}
 	if opt.alsoDefault || len(creds) == 0 {
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
@@ -251,7 +258,10 @@ func loadHosts(path string) ([]string, error) {
 		if len(rec) == 0 {
 			continue
 		}
-		h := strings.TrimSpace(strings.Trim(rec[0], `"`))
+		// Excel and Notepad write a UTF-8 BOM. On a file with a header row it
+		// lands on the header and is discarded with it; on a bare list of
+		// addresses it lands on the first address and used to reject the row.
+		h := strings.TrimSpace(strings.Trim(strings.TrimPrefix(rec[0], "\ufeff"), `"`))
 		// Accept anything that parses as an IP; that also skips the header row.
 		if net.ParseIP(h) == nil || seen[h] {
 			continue

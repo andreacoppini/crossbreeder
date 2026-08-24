@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/ed25519"
 	"crypto/rand"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -21,6 +22,11 @@ type fakeAP struct {
 	kind     Kind
 	latency  time.Duration // stalls the login banner, standing in for a slow AP
 	badLogin bool          // reject the first credential pair
+	// skipLogin models the builds that treat the SSH transport login as the
+	// only one and drop straight to the CLI prompt.
+	skipLogin bool
+	// rejectAll models a genuinely wrong password.
+	rejectAll bool
 
 	mu       sync.Mutex
 	commands []string
@@ -111,6 +117,15 @@ func (f *fakeAP) cli(ch ssh.Channel) {
 	in := bufio.NewReader(ch)
 	say := func(s string) { _, _ = ch.Write([]byte(s)) }
 
+	if f.skipLogin {
+		if f.kind == "zoneflex" {
+			f.zoneFlexLoop(in, say)
+		} else {
+			f.unleashedLoop(in, say)
+		}
+		return
+	}
+
 	readLine := func() (string, bool) {
 		l, err := in.ReadString('\n')
 		if err != nil {
@@ -130,7 +145,7 @@ func (f *fakeAP) cli(ch ssh.Channel) {
 		}
 		f.mu.Lock()
 		f.attempts++
-		reject := f.badLogin && f.attempts == 1
+		reject := f.rejectAll || (f.badLogin && f.attempts == 1)
 		f.mu.Unlock()
 		if reject {
 			say("\r\nLogin incorrect\r\n")
@@ -351,5 +366,81 @@ func TestConcurrencyBeatsSerial(t *testing.T) {
 
 	if parallel > serial/4 {
 		t.Errorf("pool of %d took %v, expected well under a quarter of the serial %v", n, parallel, serial)
+	}
+}
+
+// An AP that treats the SSH transport login as the only one lands the client
+// straight on the CLI prompt. Waiting for a login banner first used to burn a
+// full dialog timeout and then discard the prompt that had already arrived.
+func TestAPThatSkipsTheCLILogin(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 0, false)
+	f.skipLogin = true
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	cfg.DialogTimeout = 4 * time.Second
+
+	start := time.Now()
+	r := Run(t.Context(), host, cfg)
+	elapsed := time.Since(start)
+
+	if r.Status != "Done" {
+		t.Fatalf("status = %q, err = %q\ntranscript:\n%s", r.Status, r.Error, r.Transcript)
+	}
+	if r.Model != "R720" {
+		t.Errorf("model = %q", r.Model)
+	}
+	// It must recognise the prompt immediately, not after waiting one out.
+	if elapsed > cfg.DialogTimeout/2 {
+		t.Errorf("took %v; looks like it waited for a login banner that never came", elapsed)
+	}
+}
+
+func TestSameForUnleashedWithoutLoginBanner(t *testing.T) {
+	f := newFakeAP(t, KindUnleashed, 0, false)
+	f.skipLogin = true
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	r := Run(t.Context(), host, cfg)
+	if r.Status != "Done" || r.Kind != KindUnleashed {
+		t.Fatalf("status = %q kind = %q err = %q\ntranscript:\n%s", r.Status, r.Kind, r.Error, r.Transcript)
+	}
+}
+
+// A genuinely wrong password must be reported as the AP rejecting the account,
+// naming it, rather than as an opaque count.
+func TestWrongPasswordNamesTheAccount(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 0, false)
+	f.rejectAll = true
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	cfg.Credentials = []Credentials{{User: "admin", Password: "wrong"}}
+
+	r := Run(t.Context(), host, cfg)
+	if r.Status != "Login Failed" {
+		t.Fatalf("status = %q, want Login Failed", r.Status)
+	}
+	if !strings.Contains(r.Error, `"admin"`) {
+		t.Errorf("error %q does not name the account it tried", r.Error)
+	}
+}
+
+// A prompt string appearing inside a banner must not be mistaken for the device
+// waiting at that prompt.
+func TestPromptInsideBannerIsNotAPrompt(t *testing.T) {
+	e := newExpecter(io.Discard, strings.NewReader(
+		"Notice: press <ctrl-c> to abort\r\nPlease login: "), time.Second)
+
+	i, _, err := e.ExpectPats(anywhere("ogin:"), atEnd("> "))
+	if err != nil {
+		t.Fatalf("expect: %v", err)
+	}
+	if i != 0 {
+		t.Errorf("matched pattern %d; the \"> \" inside the banner was treated as a prompt", i)
 	}
 }

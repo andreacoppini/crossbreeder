@@ -72,6 +72,31 @@ func TestLoadHostsToleratesStrayQuotes(t *testing.T) {
 	}
 }
 
+// Excel and Notepad write a UTF-8 BOM. With a header row it lands on the header
+// and is discarded with it; on a bare one-line list it landed on the only
+// address there was.
+func TestLoadHostsStripsUTF8BOM(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"bare.csv":        "\ufeff192.168.77.115",
+		"bare-crlf.csv":   "\ufeff192.168.77.115\r\n",
+		"with-header.csv": "\ufeffIP Address\r\n192.168.77.115\r\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		hosts, err := loadHosts(path)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if len(hosts) != 1 || hosts[0] != "192.168.77.115" {
+			t.Errorf("%s: got %v, want [192.168.77.115]", name, hosts)
+		}
+	}
+}
+
 func TestWriteDeadListIsSortedAndReFeedable(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dead.txt")

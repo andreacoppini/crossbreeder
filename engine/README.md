@@ -77,6 +77,23 @@ JSON depending on the extension. `-v` dumps the full session transcript.
 
 Run `crossbreeder-engine -h` for the rest.
 
+### Passwords
+
+Do not pass a password as a command-line argument if you can avoid it. `cmd.exe`
+treats `^` as an escape character and eats it, PowerShell and POSIX shells each
+claim a different set, and the argument is visible in the process list either
+way. A password that works when typed into an SSH client and fails here is
+almost always the shell, not the AP.
+
+```
+crossbreeder-engine -csv aps.csv -user admin -ask-pass          # prompt, no echo
+set CBPASS=...                                                   # cmd
+crossbreeder-engine -csv aps.csv -user admin -pass-env CBPASS
+```
+
+`-ask-pass` also reads a piped line, so it stays scriptable. Giving `-user`
+without `-pass` on a terminal prompts rather than trying an empty password.
+
 ### Flags worth knowing
 
 - `-c` — how many APs at once in the SSH phase. Default 25. For inventory and
@@ -95,6 +112,7 @@ Run `crossbreeder-engine -h` for the rest.
   as `-csv`.
 - `-default` — also try the factory-default `super`/`sp-admin` login, as the
   GUI's "also try default" checkbox does.
+- `-ask-pass`, `-pass-env` — see **Passwords** above.
 - `-legacy` — on by default. Re-enables the SHA-1 KEX and CBC ciphers that
   pre-2015 ZoneFlex firmware negotiates and that modern SSH stacks refuse.
   Turn it off on a fleet that is entirely modern.

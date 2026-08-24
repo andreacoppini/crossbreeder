@@ -73,9 +73,34 @@ func (e *expecter) Send(line string) error {
 	return err
 }
 
-// Expect reads until one of want appears. It returns the index of the pattern
-// that matched and everything consumed up to and including it.
+// pat is one thing Expect can wait for.
+type pat struct {
+	text string
+	// atEnd restricts the match to the tail of what has arrived, which is what
+	// distinguishes a prompt the device is waiting at from the same characters
+	// appearing in a banner or in echoed output.
+	atEnd bool
+}
+
+func anywhere(s string) pat { return pat{text: s} }
+func atEnd(s string) pat    { return pat{text: s, atEnd: true} }
+
+// Expect reads until one of want appears anywhere in the stream. It returns the
+// index of the pattern that matched and everything consumed up to and including
+// it.
 func (e *expecter) Expect(want ...string) (int, string, error) {
+	pats := make([]pat, len(want))
+	for i, w := range want {
+		pats[i] = anywhere(w)
+	}
+	return e.ExpectPats(pats...)
+}
+
+// Pending returns what has arrived but not yet matched, for error context.
+func (e *expecter) Pending() string { return e.buf.String() }
+
+// ExpectPats reads until one of pats matches.
+func (e *expecter) ExpectPats(want ...pat) (int, string, error) {
 	deadline := time.NewTimer(e.timeout)
 	defer deadline.Stop()
 
@@ -99,30 +124,69 @@ func (e *expecter) Expect(want ...string) (int, string, error) {
 			}
 			return -1, e.drain(), err
 		case <-deadline.C:
-			return -1, e.drain(), fmt.Errorf("%w: wanted one of %q", ErrExpectTimeout, want)
+			// Leave the buffer alone. Draining it here used to throw away a
+			// prompt that had in fact arrived, so a caller retrying with a
+			// different pattern could never match it.
+			return -1, e.buf.String(), fmt.Errorf("%w: wanted one of %s", ErrExpectTimeout, describe(want))
 		}
 	}
 }
 
-// scan looks for the earliest match of any wanted pattern in the pending buffer.
-func (e *expecter) scan(want []string) (int, string, bool) {
+// scan resolves the pending buffer against the wanted patterns.
+//
+// Free patterns are matched first, earliest position wins: "Login incorrect"
+// has to beat a prompt that arrives after it. Only if none matches do the
+// end-anchored patterns get a look, longest first, so "(ap-mode)# " wins over
+// "# ".
+func (e *expecter) scan(want []pat) (int, string, bool) {
 	s := e.buf.String()
+
 	bestIdx, bestAt := -1, -1
 	for i, w := range want {
-		if at := strings.Index(s, w); at >= 0 {
-			if bestAt < 0 || at < bestAt {
-				bestIdx, bestAt = i, at
+		if w.atEnd {
+			continue
+		}
+		if at := strings.Index(s, w.text); at >= 0 && (bestAt < 0 || at < bestAt) {
+			bestIdx, bestAt = i, at
+		}
+	}
+	if bestIdx >= 0 {
+		return bestIdx, e.take(bestAt + len(want[bestIdx].text)), true
+	}
+
+	tail := strings.TrimRight(s, " \t\r\n\x00")
+	bestIdx = -1
+	for i, w := range want {
+		if !w.atEnd {
+			continue
+		}
+		if strings.HasSuffix(tail, strings.TrimRight(w.text, " ")) {
+			if bestIdx < 0 || len(w.text) > len(want[bestIdx].text) {
+				bestIdx = i
 			}
 		}
 	}
 	if bestIdx < 0 {
 		return -1, "", false
 	}
-	end := bestAt + len(want[bestIdx])
-	out := s[:end]
+	return bestIdx, e.take(len(s)), true
+}
+
+// take consumes the first n bytes of the buffer and returns them.
+func (e *expecter) take(n int) string {
+	s := e.buf.String()
+	out := s[:n]
 	e.buf.Reset()
-	e.buf.WriteString(s[end:])
-	return bestIdx, out, true
+	e.buf.WriteString(s[n:])
+	return out
+}
+
+func describe(want []pat) string {
+	parts := make([]string, len(want))
+	for i, w := range want {
+		parts[i] = fmt.Sprintf("%q", w.text)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func (e *expecter) drain() string {

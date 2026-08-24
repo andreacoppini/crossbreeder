@@ -11,6 +11,8 @@ func parseFlags() options {
 	flag.StringVar(&o.out, "out", "", "write results here (.csv or .json)")
 	flag.StringVar(&o.user, "user", "", "AP username")
 	flag.StringVar(&o.pass, "pass", "", "AP password")
+	flag.BoolVar(&o.askPass, "ask-pass", false, "prompt for the AP password instead of passing it on the command line")
+	flag.StringVar(&o.passEnv, "pass-env", "", "read the AP password from this environment variable")
 	flag.BoolVar(&o.alsoDefault, "default", false, "also try the factory-default super/sp-admin login")
 	flag.IntVar(&o.concurrency, "c", 25, "how many APs to work at once")
 
