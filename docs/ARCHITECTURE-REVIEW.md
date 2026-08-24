@@ -227,7 +227,16 @@ The lowest-risk order, each step shippable on its own:
 5. **Housekeeping:** drop the committed zips from the repo and publish them as
    release assets, and rotate the Chilkat key that is in git history.
 
-## 8. What this does not change
+## 8. One thing it removes
+
+The Xojo tool's README says "You need to supply your own HTTP, FTP or TFTP
+server". The engine no longer does: `-serve <dir>` hosts the images from the
+same binary, works out which local address routes to the APs, fills in the
+firmware host and port from what it actually bound, and keeps serving until the
+APs have taken the image. That is a second piece of software off the field
+engineer's laptop, and one fewer thing to get wrong in a hurry.
+
+## 9. What this does not change
 
 Concurrency has a ceiling that is not in our code. A firmware push has every AP
 pulling an image from one HTTP/FTP/TFTP server at once — 200 APs × ~30 MB is

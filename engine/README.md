@@ -7,7 +7,8 @@ analysis this belongs to.
 
 It does the same job as `ChangeFW.Run` in the Xojo project — walk a CSV of
 standalone Ruckus APs, collect inventory, optionally push firmware, reset,
-run a command or reboot — with the APs worked in parallel.
+run a command or reboot — with the APs worked in parallel, and with the
+firmware server built in so a push needs no other software.
 
 It runs in two phases:
 
@@ -117,6 +118,42 @@ without `-pass` on a terminal prompts rather than trying an empty password.
   pre-2015 ZoneFlex firmware negotiates and that modern SSH stacks refuse.
   Turn it off on a fleet that is entirely modern.
 - `-timeout` — per-step timeout, default 8s. The whole-AP deadline is 12× this.
+
+### Hosting the images
+
+`-serve <dir>` turns the tool into the firmware server as well as the client, so
+a push needs nothing installed but this binary:
+
+```
+crossbreeder-engine -csv aps.csv -user admin -ask-pass -fw -serve C:\firmware
+```
+
+It binds an HTTP server on the given directory, works out which local address
+routes to the APs, and fills in `-fw-proto http`, `-fw-host` and `-fw-port`
+itself. If `-fw-file` is not given and the directory holds exactly one `.rcks`
+control file (or, failing that, one `.bl7`), that is what gets pushed.
+
+Because the APs download in the background, well after their SSH sessions have
+closed, the tool keeps serving and waits for them:
+
+```
+Serving C:\firmware on http://192.168.77.105:8080 — waiting for 3 AP(s) to download (Ctrl-C to stop)
+  192.168.77.115  200 118.2.0.0.875.rcks       61 B in 2ms
+  192.168.77.115  200 118.2.0.0.875.bl7     46.0 MiB in 41.2s
+All 3 AP(s) took the image.
+```
+
+It stops as soon as every AP has taken a full copy, at `-serve-wait` (default
+30m), or on Ctrl-C — whichever comes first, and it says which APs were still
+outstanding. An AP that reaches the server over a different interface arrives
+with a source address that is not the one it was driven on; those downloads are
+counted too and called out rather than being reported as missing.
+
+Other flags: `-serve-port` (default 8080, `0` picks a free one) and `-serve-ip`
+to override the advertised address. The server is GET/HEAD only and confined to
+the directory given, but it is still a listening port serving files to the
+network — point it at a directory holding firmware, not at a general share.
+Windows will prompt for a firewall exception the first time.
 
 ### Firmware pushes
 

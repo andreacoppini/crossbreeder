@@ -35,22 +35,27 @@ type options struct {
 	alsoDefault bool
 	concurrency int
 
-	fw       bool
-	fwProto  string
-	fwHost   string
-	fwPort   string
-	fwUser   string
-	fwPass   string
-	fwFile   string
-	fwWait   time.Duration
-	factory  bool
-	reboot   bool
-	command  string
-	sshPort  string
-	timeout  time.Duration
-	legacy   bool
-	verbose  bool
-	showVers bool
+	fw      bool
+	fwProto string
+	fwHost  string
+	fwPort  string
+	fwUser  string
+	fwPass  string
+	fwFile  string
+	fwWait  time.Duration
+
+	serveDir  string
+	servePort int
+	serveIP   string
+	serveWait time.Duration
+	factory   bool
+	reboot    bool
+	command   string
+	sshPort   string
+	timeout   time.Duration
+	legacy    bool
+	verbose   bool
+	showVers  bool
 
 	probe           string
 	deadOut         string
@@ -93,6 +98,10 @@ func run(opt options) error {
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
 	}
 
+	if opt.serveDir != "" && !opt.fw {
+		return fmt.Errorf("-serve hosts the images for a firmware push; add -fw")
+	}
+
 	// "set factory" stages the reset; the AP does not act on it until it
 	// reboots, so a factory reset on its own leaves the AP exactly as it was.
 	reboot := opt.reboot
@@ -123,6 +132,30 @@ func run(opt options) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// The built-in image server, if asked for. It is started before anything
+	// touches an AP, because "fw update" can have the AP fetching within
+	// milliseconds, and it outlives the SSH phase for the same reason.
+	var srv *fileServer
+	if opt.serveDir != "" {
+		srv, err = startFileServer(opt.serveDir, opt.serveIP, hosts[0], opt.servePort)
+		if err != nil {
+			return err
+		}
+		defer srv.Close()
+		cfg.Firmware.Proto = "http"
+		cfg.Firmware.Host = srv.Host()
+		cfg.Firmware.Port = srv.Port()
+		if cfg.Firmware.Filename == "" {
+			name, err := pickFirmwareFile(opt.serveDir)
+			if err != nil {
+				return err
+			}
+			cfg.Firmware.Filename = name
+			fmt.Fprintf(os.Stderr, "Pushing %s\n", name)
+		}
+		fmt.Fprintf(os.Stderr, "Serving %s on http://%s\n", opt.serveDir, srv.addr)
+	}
 
 	overall := time.Now()
 
@@ -171,6 +204,18 @@ func run(opt options) error {
 
 	fmt.Fprintf(os.Stderr, "\n%d addresses, %d alive, %d contacted in %s\n",
 		len(hosts), len(alive), len(byHost), time.Since(overall).Round(time.Millisecond))
+
+	// Hold the server up until the APs that accepted the push have taken the
+	// image; they download long after their SSH session closed.
+	if srv != nil {
+		var pushed []string
+		for _, r := range results {
+			if r.FwStatus != "" && r.Status == "Done" {
+				pushed = append(pushed, r.IP)
+			}
+		}
+		srv.Wait(ctx, pushed, opt.serveWait, os.Stderr)
+	}
 
 	if err := writeDeadList(opt.deadOut, dead); err != nil {
 		return err
