@@ -39,6 +39,10 @@ function persist() {
     if (el) s[k] = el.type === 'checkbox' ? el.checked : el.value;
   }
   try { localStorage.setItem('crossbreeder', JSON.stringify(s)); } catch (e) { /* private mode */ }
+  // The password is deliberately not in SAVE: it must not survive on disk. It
+  // is held for this browser session only, so a reload mid-job does not empty
+  // the field without the operator noticing.
+  try { sessionStorage.setItem('cb-pass', $('pass').value); } catch (e) { /* ignore */ }
 }
 
 function restore() {
@@ -49,8 +53,13 @@ function restore() {
     if (!el) continue;
     if (el.type === 'checkbox') el.checked = v; else if (v !== '') el.value = v;
   }
+  try {
+    const p = sessionStorage.getItem('cb-pass');
+    if (p) $('pass').value = p;
+  } catch (e) { /* ignore */ }
   hostsChanged();
   actionsChanged();
+  credsChanged();
 }
 
 /* ---------- targets ---------- */
@@ -107,6 +116,31 @@ for (const id of ['firmware', 'factory', 'reboot', 'command']) {
   $(id).addEventListener('input', actionsChanged);
 }
 for (const k of SAVE) $(k)?.addEventListener('change', persist);
+$('pass').addEventListener('input', persist);
+$('user').addEventListener('input', credsChanged);
+$('pass').addEventListener('input', credsChanged);
+$('alsoDefault').addEventListener('change', credsChanged);
+
+// Show what will actually be tried, so a blank field cannot turn into a
+// puzzling "Login Failed" from the AP.
+function credsChanged() {
+  const u = $('user').value.trim(), p = $('pass').value;
+  const el = $('credHint');
+  if (!u && !p) {
+    el.className = 'hint';
+    el.textContent = 'No username: the factory default super / sp-admin will be tried.';
+  } else if (u && !p) {
+    el.className = 'hint warn';
+    el.textContent = `No password for "${u}". Passwords are not kept after the browser closes — re-enter it.`;
+  } else if (!u && p) {
+    el.className = 'hint warn';
+    el.textContent = 'A password with no username cannot be used. Enter the username.';
+  } else {
+    el.className = 'hint';
+    el.textContent = `Will try "${u}" (${p.length}-character password)` +
+      ($('alsoDefault').checked ? ', then super / sp-admin.' : '.');
+  }
+}
 
 // Collapsible config sections.
 document.querySelectorAll('section > h2').forEach((h) => {
@@ -263,6 +297,15 @@ function request() {
 $('run').onclick = () => {
   const hosts = hostList();
   if (!hosts.length) return toast('No addresses to work on.');
+  const u = $('user').value.trim(), pw = $('pass').value;
+  if (u && !pw) {
+    $('pass').focus();
+    return toast(`No password for "${u}" — it is not kept after the browser closes.`);
+  }
+  if (!u && pw) {
+    $('user').focus();
+    return toast('A password with no username cannot be used.');
+  }
   const d = destructiveList();
   if (!d.length) return start();
   $('cN').textContent = hosts.length;

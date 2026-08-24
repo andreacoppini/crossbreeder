@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,6 +70,13 @@ type JobResult struct {
 func buildConfig(opt options, password string) (ap.Config, []string, error) {
 	var notes []string
 
+	// A password with no username used to be discarded in silence, and the run
+	// would then try super/sp-admin and report a login failure that looked like
+	// the AP's fault. Refuse instead of guessing.
+	if opt.user == "" && password != "" {
+		return ap.Config{}, nil, fmt.Errorf("a password was given with no username")
+	}
+
 	creds := []ap.Credentials{}
 	if opt.user != "" {
 		creds = append(creds, ap.Credentials{User: opt.user, Password: password})
@@ -114,6 +122,11 @@ func buildConfig(opt options, password string) (ap.Config, []string, error) {
 // the downloads. Everything worth watching goes out through emit.
 func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emit Emitter) (JobResult, error) {
 	start := time.Now()
+
+	// Say which accounts are about to be tried. A run that quietly fell back to
+	// the factory defaults, or one carrying an empty password, is otherwise
+	// indistinguishable from the AP rejecting good credentials.
+	emit(Event{Kind: EvLog, Message: credentialSummary(cfg.Credentials)})
 
 	// The image server, if asked for. It starts before anything touches an AP,
 	// because "fw update" can have the AP fetching within milliseconds, and it
@@ -291,6 +304,21 @@ func sweepHosts(ctx context.Context, hosts []string, opt options, emit Emitter) 
 	emit(Event{Kind: EvLog, Message: fmt.Sprintf("%d of %d answered in %s; %d skipped",
 		len(alive), len(hosts), time.Since(start).Round(time.Millisecond), len(dead))})
 	return alive, dead, res
+}
+
+// credentialSummary names the accounts and the length of each password. The
+// length is enough to spot an empty or truncated password without ever putting
+// the password itself in a log.
+func credentialSummary(creds []ap.Credentials) string {
+	parts := make([]string, 0, len(creds))
+	for _, c := range creds {
+		if c.Password == "" {
+			parts = append(parts, fmt.Sprintf("%s (no password)", c.User))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (%d-character password)", c.User, len(c.Password)))
+		}
+	}
+	return "Trying " + strings.Join(parts, ", then ")
 }
 
 func msOf(d time.Duration) float64 { return float64(d.Microseconds()) / 1000.0 }
