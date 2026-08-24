@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type fileServer struct {
 	ln   net.Listener
 	srv  *http.Server
 
+	file       string   // the control/image file the APs were told to fetch
 	reason     string   // why this address was chosen
 	considered []string // the alternatives, for -v
 
@@ -35,6 +37,58 @@ type fileServer struct {
 	fetched  map[string]map[string]int64 // client IP -> path -> bytes served
 	complete map[string]bool             // client IP -> took a full image
 	log      []string
+	recent   []Transfer
+	active   map[int64]*activeReq
+	nextID   int64
+	stopped  bool
+}
+
+// Transfer is one finished request, kept so the console can show what the APs
+// have actually pulled rather than only whether the run "worked".
+type Transfer struct {
+	At     string `json:"at"`
+	Client string `json:"client"`
+	Path   string `json:"path"`
+	Bytes  int64  `json:"bytes"`
+	Human  string `json:"human"`
+	Status int    `json:"status"`
+	MS     int64  `json:"ms"`
+}
+
+// activeReq is the live record a response writer updates as bytes go out. The
+// counters are atomic because Status() reads them from another goroutine on
+// every console poll.
+type activeReq struct {
+	client string
+	path   string
+	total  int64
+	bytes  atomic.Int64
+	secs   atomic.Int64
+}
+
+// ActiveConn is a request still in flight, as reported to the console. A 46 MiB
+// image over a slow link is several minutes during which nothing else says the
+// push is alive.
+type ActiveConn struct {
+	Client  string  `json:"client"`
+	Path    string  `json:"path"`
+	Bytes   int64   `json:"bytes"`
+	Human   string  `json:"human"`
+	Total   int64   `json:"total"`
+	Percent float64 `json:"percent"`
+	Seconds int64   `json:"seconds"`
+}
+
+// ServerStatus is the whole state of the built-in image server.
+type ServerStatus struct {
+	Running   bool         `json:"running"`
+	Addr      string       `json:"addr"`
+	Dir       string       `json:"dir"`
+	File      string       `json:"file"`
+	Reason    string       `json:"reason"`
+	Active    []ActiveConn `json:"active"`
+	Recent    []Transfer   `json:"recent"`
+	Completed int          `json:"completed"`
 }
 
 // startFileServer binds the server and begins serving dir.
@@ -71,6 +125,7 @@ func startFileServer(dir, advertiseIP string, targets []string, port int) (*file
 		ln:       ln,
 		fetched:  map[string]map[string]int64{},
 		complete: map[string]bool{},
+		active:   map[int64]*activeReq{},
 	}
 	f.reason, f.considered = reason, considered
 	f.srv = &http.Server{Handler: f.handler(), ReadHeaderTimeout: 10 * time.Second}
@@ -89,7 +144,43 @@ func (f *fileServer) Port() string {
 	return p
 }
 
-func (f *fileServer) Close() error { return f.srv.Close() }
+func (f *fileServer) Close() error {
+	f.mu.Lock()
+	f.stopped = true
+	f.mu.Unlock()
+	return f.srv.Close()
+}
+
+// Status is a snapshot for the console.
+func (f *fileServer) Status() ServerStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	st := ServerStatus{
+		Running: !f.stopped, Addr: f.addr, Dir: f.dir, File: f.file, Reason: f.reason,
+		Recent: append([]Transfer(nil), f.recent...),
+	}
+	for _, a := range f.active {
+		n := a.bytes.Load()
+		c := ActiveConn{
+			Client: a.client, Path: a.path, Bytes: n, Human: humanBytes(n),
+			Total: a.total, Seconds: a.secs.Load(),
+		}
+		if a.total > 0 {
+			c.Percent = float64(n) / float64(a.total) * 100
+		}
+		st.Active = append(st.Active, c)
+	}
+	sort.Slice(st.Active, func(i, j int) bool { return st.Active[i].Client < st.Active[j].Client })
+	for range f.complete {
+		st.Completed++
+	}
+	// Newest first reads better in a panel.
+	for i, j := 0, len(st.Recent)-1; i < j; i, j = i+1, j-1 {
+		st.Recent[i], st.Recent[j] = st.Recent[j], st.Recent[i]
+	}
+	return st
+}
 
 func (f *fileServer) handler() http.Handler {
 	fs := http.FileServer(http.Dir(f.dir))
@@ -101,10 +192,32 @@ func (f *fileServer) handler() http.Handler {
 		}
 		client, _, _ := net.SplitHostPort(r.RemoteAddr)
 		start := time.Now()
-		cw := &countingWriter{ResponseWriter: w, status: http.StatusOK}
+
+		id, live := f.begin(client, r.URL.Path)
+		cw := &countingWriter{ResponseWriter: w, status: http.StatusOK, live: live, since: start}
 		fs.ServeHTTP(cw, r)
+		f.end(id)
+
 		f.record(client, r.URL.Path, cw.n, cw.status, time.Since(start))
 	})
+}
+
+// begin registers an in-flight request and hands back the record the response
+// writer updates as bytes go out.
+func (f *fileServer) begin(client, path string) (int64, *activeReq) {
+	total := f.sizeOf(path)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextID++
+	a := &activeReq{client: client, path: strings.TrimPrefix(path, "/"), total: total}
+	f.active[f.nextID] = a
+	return f.nextID, a
+}
+
+func (f *fileServer) end(id int64) {
+	f.mu.Lock()
+	delete(f.active, id)
+	f.mu.Unlock()
 }
 
 func (f *fileServer) record(client, path string, n int64, status int, d time.Duration) {
@@ -126,6 +239,15 @@ func (f *fileServer) record(client, path string, n int64, status int, d time.Dur
 
 	f.log = append(f.log, fmt.Sprintf("  %-15s %-3d %-28s %9s in %s",
 		client, status, strings.TrimPrefix(path, "/"), humanBytes(n), d.Round(time.Millisecond)))
+
+	f.recent = append(f.recent, Transfer{
+		At: time.Now().Format("15:04:05"), Client: client, Path: strings.TrimPrefix(path, "/"),
+		Bytes: n, Human: humanBytes(n), Status: status, MS: d.Milliseconds(),
+	})
+	// A long push against a big fleet would otherwise grow without bound.
+	if len(f.recent) > 500 {
+		f.recent = f.recent[len(f.recent)-500:]
+	}
 }
 
 func (f *fileServer) sizeOf(urlPath string) int64 {
@@ -283,6 +405,8 @@ type countingWriter struct {
 	http.ResponseWriter
 	n      int64
 	status int
+	live   *activeReq
+	since  time.Time
 }
 
 func (c *countingWriter) WriteHeader(status int) {
@@ -293,6 +417,10 @@ func (c *countingWriter) WriteHeader(status int) {
 func (c *countingWriter) Write(b []byte) (int, error) {
 	n, err := c.ResponseWriter.Write(b)
 	c.n += int64(n)
+	if c.live != nil {
+		c.live.bytes.Store(c.n)
+		c.live.secs.Store(int64(time.Since(c.since).Seconds()))
+	}
 	return n, err
 }
 

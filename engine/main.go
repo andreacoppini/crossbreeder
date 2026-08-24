@@ -130,7 +130,7 @@ func run(opt options) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	out, err := runJob(ctx, opt, hosts, cfg, cliPrinter(opt))
+	out, err := runJob(ctx, opt, hosts, cfg, cliPrinter(opt), nil)
 	if err != nil {
 		return err
 	}

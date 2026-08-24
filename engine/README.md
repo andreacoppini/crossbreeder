@@ -146,6 +146,13 @@ without `-pass` on a terminal prompts rather than trying an empty password.
 
 ### Hosting the images
 
+In the console the same thing is a choice between **Internal** and **External**
+at the top of the firmware section: internal shares a folder from this machine
+and shows what the server is doing — started or stopped, the address it is
+listening on, what each AP is downloading right now with a progress bar, and
+what has already completed. External is the classic arrangement where the APs
+fetch from a server you already run.
+
 `-serve` turns the tool into the firmware server as well as the client, so a
 push needs nothing installed but this binary. With the images sitting next to
 the exe, that is the whole command:

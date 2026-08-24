@@ -30,7 +30,7 @@ async function loadDefaults() {
 
 // Everything except the passwords is remembered between sessions.
 const SAVE = [...FIELDS, 'alsoDefault', 'firmware', 'factory', 'reboot', 'command',
-  'serve', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts'];
+  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts'];
 
 function persist() {
   const s = {};
@@ -60,6 +60,8 @@ function restore() {
   hostsChanged();
   actionsChanged();
   credsChanged();
+  restoreMode();
+  pollServer();
 }
 
 /* ---------- targets ---------- */
@@ -70,7 +72,10 @@ function hostList() {
     .filter((s) => /^\d{1,3}(\.\d{1,3}){3}$/.test(s));
 }
 
+let ipTimer = null;
 function hostsChanged() {
+  clearTimeout(ipTimer);
+  ipTimer = setTimeout(() => { if (internalMode()) refreshIPs(); }, 400);
   const n = hostList().length;
   const lines = $('hosts').value.split('\n').filter((l) => l.trim()).length;
   $('nHosts').textContent = n ? `(${n})` : '';
@@ -108,6 +113,7 @@ function actionsChanged() {
   el.hidden = d.length === 0;
   el.textContent = d.length ? 'This run changes the APs. You will be asked to confirm.' : '';
   $('fwSection').classList.toggle('collapsed', !$('firmware').checked);
+  if ($('firmware').checked && internalMode()) { refreshFirmware(); refreshIPs(); }
   persist();
 }
 
@@ -146,6 +152,156 @@ function credsChanged() {
 document.querySelectorAll('section > h2').forEach((h) => {
   h.onclick = () => h.parentElement.classList.toggle('collapsed');
 });
+
+/* ---------- firmware server ---------- */
+
+const internalMode = () => $('modeInternal').checked;
+
+function srvModeChanged() {
+  const internal = internalMode();
+  $('internalOpts').hidden = !internal;
+  $('externalOpts').hidden = internal;
+  persistMode();
+  if (internal) { refreshFirmware(); refreshIPs(); }
+}
+$('modeInternal').onchange = srvModeChanged;
+$('modeExternal').onchange = srvModeChanged;
+
+function persistMode() {
+  try { localStorage.setItem('cb-mode', internalMode() ? 'internal' : 'external'); } catch (e) { /* ignore */ }
+}
+
+function restoreMode() {
+  let m = 'internal';
+  try { m = localStorage.getItem('cb-mode') || 'internal'; } catch (e) { /* ignore */ }
+  $(m === 'external' ? 'modeExternal' : 'modeInternal').checked = true;
+  srvModeChanged();
+}
+
+// Show the file that would actually be sent, rather than promising to pick one.
+async function refreshFirmware() {
+  const dir = $('serveDir').value;
+  const sel = $('fwFileSel');
+  const hint = $('fwFileHint');
+  try {
+    const r = await (await fetch('/api/firmware?dir=' + encodeURIComponent(dir))).json();
+    const chosen = sel.value;
+    sel.replaceChildren();
+    for (const c of r.candidates || []) {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    }
+    if (r.error) {
+      hint.className = 'hint warn';
+      hint.textContent = r.error;
+      if (!r.candidates?.length) sel.replaceChildren(new Option('(nothing to push)', ''));
+      return;
+    }
+    sel.value = (r.candidates || []).includes(chosen) ? chosen : r.picked;
+    hint.className = 'hint';
+    hint.textContent = sel.value === r.picked
+      ? `Picked automatically: ${r.reason}.` : 'Chosen manually.';
+  } catch (e) {
+    hint.className = 'hint warn';
+    hint.textContent = 'Could not read that folder.';
+  }
+}
+
+async function refreshIPs() {
+  const sel = $('serveIp');
+  const keep = sel.value;
+  try {
+    const r = await (await fetch('/api/ips?hosts=' + encodeURIComponent($('hosts').value))).json();
+    sel.replaceChildren(new Option('Automatic', ''));
+    for (const ip of r.ips || []) sel.appendChild(new Option(ip.label, ip.ip));
+    sel.value = keep;
+  } catch (e) { /* leave the automatic option alone */ }
+}
+
+$('serveDir').addEventListener('change', () => { refreshFirmware(); persist(); });
+
+/* ---- folder picker ---- */
+
+let pkCurrent = '';
+
+async function openPicker(path) {
+  const r = await (await fetch('/api/browse?path=' + encodeURIComponent(path || $('serveDir').value))).json();
+  if (r.error) return toast(r.error);
+  pkCurrent = r.path;
+  $('pkPath').value = r.path;
+  $('pkUp').disabled = !r.parent;
+  $('pkUp').dataset.path = r.parent || '';
+
+  $('pkRoots').replaceChildren(...(r.roots || []).map((d) => {
+    const c = document.createElement('div');
+    c.className = 'chip';
+    c.textContent = d.name;
+    c.onclick = () => openPicker(d.path);
+    return c;
+  }));
+
+  $('pkList').replaceChildren(...(r.dirs || []).map((d) => {
+    const el = document.createElement('div');
+    el.textContent = '\u{1F4C1}  ' + d.name;
+    el.onclick = () => openPicker(d.path);
+    return el;
+  }));
+  if (!r.dirs?.length) {
+    const el = document.createElement('div');
+    el.className = 'empty';
+    el.textContent = 'No sub-folders here.';
+    $('pkList').replaceChildren(el);
+  }
+
+  const n = (r.firmware || []).length;
+  $('pkFound').className = n ? 'hint' : 'hint warn';
+  $('pkFound').textContent = n
+    ? `${n} firmware file${n === 1 ? '' : 's'} here: ${r.firmware.slice(0, 3).join(', ')}${n > 3 ? '…' : ''}`
+    : 'No .rcks or .bl7 files in this folder.';
+  $('picker').hidden = false;
+}
+
+$('browse').onclick = (e) => { e.preventDefault(); openPicker(); };
+$('pkUp').onclick = (e) => { e.preventDefault(); openPicker(e.target.dataset.path); };
+$('pkCancel').onclick = () => { $('picker').hidden = true; };
+$('pkUse').onclick = () => {
+  $('serveDir').value = pkCurrent;
+  $('picker').hidden = true;
+  refreshFirmware();
+  persist();
+};
+$('pkPath').addEventListener('keydown', (e) => { if (e.key === 'Enter') openPicker($('pkPath').value); });
+
+/* ---- live server status ---- */
+
+async function pollServer() {
+  try {
+    const s = await (await fetch('/api/server')).json();
+    const up = !!s.addr && s.running;
+    $('srvDot').className = 'dot' + (up ? ' on' : '');
+    $('srvState').textContent = !s.addr ? 'Stopped' : (s.running ? 'Started' : 'Stopped');
+    $('srvAddr').textContent = s.addr ? `http://${s.addr}${s.file ? '  ·  ' + s.file : ''}` : 'not started yet';
+
+    $('srvActive').replaceChildren(...(s.active || []).map((a) => {
+      const d = document.createElement('div');
+      d.className = 'conn';
+      d.innerHTML = `${esc(a.client)} &nbsp; ${esc(a.path)} &nbsp; ${esc(a.human)}` +
+        (a.total ? ` / ${esc(humanBytes(a.total))} (${a.percent.toFixed(0)}%)` : '') +
+        ` &nbsp; ${a.seconds}s<div class="meter"><i style="width:${Math.min(100, a.percent || 0)}%"></i></div>`;
+      return d;
+    }));
+
+    const r = s.recent || [];
+    $('srvRecent').textContent = r.length
+      ? `${r.length} completed — last: ${r[0].client} ${r[0].path} ${r[0].human}`
+      : (s.addr ? 'No downloads yet.' : '');
+  } catch (e) { /* the console outlives individual runs */ }
+}
+setInterval(pollServer, 1000);
+
+const humanBytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MiB'
+  : n >= 1024 ? (n / 1024).toFixed(1) + ' KiB' : n + ' B';
 
 /* ---------- the table ---------- */
 
@@ -285,10 +441,11 @@ function request() {
     pingConcurrency: num('pingConcurrency'),
     firmware: $('firmware').checked, factory: $('factory').checked,
     reboot: $('reboot').checked, command: $('command').value.trim(),
-    serve: $('firmware').checked && $('serve').checked,
+    serve: $('firmware').checked && internalMode(),
     serveDir: $('serveDir').value, serveIp: $('serveIp').value, servePort: num('servePort'),
     fwProto: $('fwProto').value, fwHost: $('fwHost').value, fwPort: $('fwPort').value,
-    fwUser: $('fwUser').value, fwPass: $('fwPass').value, fwFile: $('fwFile').value,
+    fwUser: $('fwUser').value, fwPass: $('fwPass').value,
+    fwFile: internalMode() ? $('fwFileSel').value : $('fwFile').value,
     sshPort: $('sshPort').value, timeoutS: num('timeoutS'), legacy: $('legacy').checked,
     serveWaitS: num('serveWaitS'),
   };

@@ -96,6 +96,9 @@ func chooseServeIP(targets []string) (ip string, reason string, considered []str
 	return best.ip.String(), reason, considered, nil
 }
 
+// parseIP4 returns the IPv4 form of s, or nil.
+func parseIP4(s string) net.IP { return net.ParseIP(s).To4() }
+
 // sortCandidates puts the best choice first.
 func sortCandidates(c []ipCandidate) {
 	sort.SliceStable(c, func(i, j int) bool {

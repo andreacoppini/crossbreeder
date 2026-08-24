@@ -35,6 +35,7 @@ type uiServer struct {
 	cancel   context.CancelFunc
 	results  []ap.Result
 	dead     []string
+	srv      *fileServer
 	lastCfg  string
 	finished bool
 }
@@ -62,6 +63,10 @@ func serveUI(opt options) error {
 	mux.HandleFunc("/api/hosts", u.handleHosts)
 	mux.HandleFunc("/api/export", u.handleExport)
 	mux.HandleFunc("/api/defaults", u.handleDefaults)
+	mux.HandleFunc("/api/server", u.handleServerStatus)
+	mux.HandleFunc("/api/ips", u.handleIPs)
+	mux.HandleFunc("/api/browse", u.handleBrowse)
+	mux.HandleFunc("/api/firmware", u.handleFirmware)
 
 	fmt.Printf("Crossbreeder %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
 	openBrowser(url)
@@ -239,7 +244,11 @@ func (u *uiServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		for _, n := range notes {
 			u.publish(Event{Kind: EvLog, Message: "note: " + n})
 		}
-		out, err := runJob(ctx, opt, req.Hosts, cfg, u.publish)
+		out, err := runJob(ctx, opt, req.Hosts, cfg, u.publish, func(s *fileServer) {
+			u.mu.Lock()
+			u.srv = s
+			u.mu.Unlock()
+		})
 		if err != nil {
 			u.publish(Event{Kind: EvError, Message: err.Error()})
 			return
@@ -311,6 +320,37 @@ func (u *uiServer) handleHosts(w http.ResponseWriter, r *http.Request) {
 	}
 	hosts, skipped := parseHostsText(string(body))
 	writeJSON(w, map[string]any{"hosts": hosts, "skipped": skipped})
+}
+
+// handleServerStatus reports the built-in image server: whether it is up, what
+// it is listening on, what is downloading right now and what already has.
+func (u *uiServer) handleServerStatus(w http.ResponseWriter, r *http.Request) {
+	u.mu.Lock()
+	srv := u.srv
+	u.mu.Unlock()
+	if srv == nil {
+		writeJSON(w, ServerStatus{})
+		return
+	}
+	writeJSON(w, srv.Status())
+}
+
+func (u *uiServer) handleIPs(w http.ResponseWriter, r *http.Request) {
+	hosts, _ := parseHostsText(r.URL.Query().Get("hosts"))
+	writeJSON(w, map[string]any{"ips": serveIPChoices(hosts)})
+}
+
+func (u *uiServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
+	listing, err := browseDir(r.URL.Query().Get("path"))
+	if err != nil {
+		httpErr(w, err)
+		return
+	}
+	writeJSON(w, listing)
+}
+
+func (u *uiServer) handleFirmware(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, firmwareIn(r.URL.Query().Get("dir")))
 }
 
 func (u *uiServer) handleExport(w http.ResponseWriter, r *http.Request) {

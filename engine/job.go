@@ -120,7 +120,9 @@ func buildConfig(opt options, password string) (ap.Config, []string, error) {
 
 // runJob is the whole run: image server, ping sweep, SSH phase, then waiting for
 // the downloads. Everything worth watching goes out through emit.
-func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emit Emitter) (JobResult, error) {
+// onServer, if set, is handed the image server as soon as it is listening, so a
+// caller can report on it while the run is in flight.
+func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emit Emitter, onServer func(*fileServer)) (JobResult, error) {
 	start := time.Now()
 
 	// Say which accounts are about to be tried. A run that quietly fell back to
@@ -139,6 +141,9 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 			return JobResult{}, err
 		}
 		defer srv.Close()
+		if onServer != nil {
+			onServer(srv)
+		}
 
 		cfg.Firmware.Proto = "http"
 		cfg.Firmware.Host = srv.Host()
@@ -150,6 +155,7 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 			}
 			cfg.Firmware.Filename = name
 		}
+		srv.file = cfg.Firmware.Filename
 		emit(Event{Kind: EvServer, Server: &ServerInfo{
 			Addr: srv.addr, Dir: opt.serveDir, File: cfg.Firmware.Filename,
 			Reason: srv.reason, Considered: srv.considered,

@@ -65,28 +65,63 @@
   <section id="fwSection" class="collapsed">
     <h2>Firmware server</h2>
     <div class="body">
-      <label class="check"><input type="checkbox" id="serve" checked> Host the images from this machine</label>
-      <label><span>Folder to share</span><input type="text" id="serveDir" spellcheck="false"></label>
-      <label><span>Image / control file <span class="hint">(blank = pick automatically)</span></span><input type="text" id="fwFile" spellcheck="false"></label>
-      <div class="row">
-        <label><span>Serve port</span><input type="number" id="servePort" min="0"></label>
-        <label><span>Advertise IP</span><input type="text" id="serveIp" placeholder="auto" spellcheck="false"></label>
+
+      <div class="seg" id="srvMode">
+        <label class="check"><input type="radio" name="srvmode" value="internal" id="modeInternal" checked>
+          <span><b>Internal</b> — host the images from this machine</span></label>
+        <label class="check"><input type="radio" name="srvmode" value="external" id="modeExternal">
+          <span><b>External</b> — the APs fetch from a server you already run</span></label>
       </div>
-      <div class="hint">Blank picks the address whose subnet holds the most APs.</div>
-      <label><span>Wait for downloads (s)</span><input type="number" id="serveWaitS" min="0"></label>
-      <hr style="border:0;border-top:1px solid var(--line);margin:2px 0">
-      <div class="hint">Or point the APs at an external server:</div>
-      <div class="row">
-        <label><span>Protocol</span>
-          <select id="fwProto"><option>http</option><option>tftp</option><option>ftp</option><option>https</option></select>
+
+      <!-- internal -->
+      <div id="internalOpts">
+        <label><span>Folder to share</span>
+          <div class="row">
+            <input type="text" id="serveDir" spellcheck="false">
+            <button id="browse" style="flex:0 0 auto">Browse…</button>
+          </div>
         </label>
-        <label><span>Port</span><input type="text" id="fwPort"></label>
+        <label><span>Image / control file</span>
+          <select id="fwFileSel"></select>
+        </label>
+        <div class="hint" id="fwFileHint"></div>
+        <div class="row">
+          <label><span>Serve port</span><input type="number" id="servePort" min="0"></label>
+          <label><span>Wait for downloads (s)</span><input type="number" id="serveWaitS" min="0"></label>
+        </div>
+        <label><span>Advertise this address to the APs</span>
+          <select id="serveIp"><option value="">Automatic</option></select>
+        </label>
+        <div class="hint">Automatic prefers an address on the same subnet as the APs.</div>
+
+        <div class="srvbox">
+          <div class="srvhead">
+            <span class="dot" id="srvDot"></span>
+            <b id="srvState">Stopped</b>
+            <span class="hint" id="srvAddr"></span>
+          </div>
+          <div id="srvActive"></div>
+          <div class="hint" id="srvRecent"></div>
+        </div>
       </div>
-      <label><span>Host</span><input type="text" id="fwHost" spellcheck="false"></label>
-      <div class="row">
-        <label><span>Server user</span><input type="text" id="fwUser" autocomplete="off" spellcheck="false"></label>
-        <label><span>Server password</span><input type="password" id="fwPass" autocomplete="off"></label>
+
+      <!-- external -->
+      <div id="externalOpts" hidden>
+        <div class="row">
+          <label><span>Protocol</span>
+            <select id="fwProto"><option>http</option><option>tftp</option><option>ftp</option><option>https</option></select>
+          </label>
+          <label><span>Port</span><input type="text" id="fwPort"></label>
+        </div>
+        <label><span>Host</span><input type="text" id="fwHost" spellcheck="false"></label>
+        <label><span>Image / control file</span><input type="text" id="fwFile" spellcheck="false" placeholder="e.g. 118.2.0.0.875.rcks"></label>
+        <div class="row">
+          <label><span>Server user</span><input type="text" id="fwUser" autocomplete="off" spellcheck="false"></label>
+          <label><span>Server password</span><input type="password" id="fwPass" autocomplete="off"></label>
+        </div>
+        <div class="hint">Leave user and password blank for TFTP or an open HTTP server.</div>
       </div>
+
     </div>
   </section>
 
@@ -161,6 +196,23 @@
     <div class="pane" id="pTx" hidden><span class="empty">Select an AP to see its session.</span></div>
   </div>
 </main>
+</div>
+
+<div class="modal" id="picker" hidden>
+  <div style="width:560px;max-width:90vw">
+    <h3>Choose the folder holding the firmware</h3>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="pkPath" spellcheck="false">
+      <button id="pkUp" style="flex:0 0 auto">Up</button>
+    </div>
+    <div id="pkRoots" class="chips" style="margin-bottom:8px"></div>
+    <div id="pkList" class="pklist"></div>
+    <div class="hint" id="pkFound"></div>
+    <div class="btns">
+      <button id="pkCancel">Cancel</button>
+      <button id="pkUse" class="primary">Use this folder</button>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="confirm" hidden>
