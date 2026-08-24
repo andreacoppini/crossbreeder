@@ -149,7 +149,7 @@ func run(opt options) error {
 	// milliseconds, and it outlives the SSH phase for the same reason.
 	var srv *fileServer
 	if opt.serveDir != "" {
-		srv, err = startFileServer(opt.serveDir, opt.serveIP, hosts[0], opt.servePort)
+		srv, err = startFileServer(opt.serveDir, opt.serveIP, hosts, opt.servePort)
 		if err != nil {
 			return err
 		}
@@ -166,6 +166,14 @@ func run(opt options) error {
 			fmt.Fprintf(os.Stderr, "Pushing %s\n", name)
 		}
 		fmt.Fprintf(os.Stderr, "Serving %s on http://%s\n", opt.serveDir, srv.addr)
+		if srv.reason != "" {
+			fmt.Fprintf(os.Stderr, "  address chosen: %s\n", srv.reason)
+		}
+		if opt.verbose {
+			for _, c := range srv.considered {
+				fmt.Fprintf(os.Stderr, "    %s\n", c)
+			}
+		}
 	}
 
 	overall := time.Now()

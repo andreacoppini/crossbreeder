@@ -137,9 +137,30 @@ crossbreeder-engine ... -fw -serve C:\firmware
 crossbreeder-engine ... -fw -serve=C:\firmware
 ```
 
-It binds an HTTP server on that directory, works out which local address
-routes to the APs, and fills in `-fw-proto http`, `-fw-host` and `-fw-port`
-itself. If `-fw-file` is not given and the directory holds exactly one `.rcks`
+It binds an HTTP server on that directory, works out which of this machine's
+addresses the APs should fetch from, and fills in `-fw-proto http`, `-fw-host`
+and `-fw-port` itself.
+
+The address is chosen by looking at the AP list, not at the routing table —
+asking the OS how it would reach one AP gets you the VPN's address whenever a
+VPN is up, and the APs cannot reach that. In order of preference:
+
+1. the address whose own subnet holds the **most** APs in the CSV,
+2. any address whose subnet holds **an** AP,
+3. an RFC 1918 address (`10/8`, `172.16/12`, `192.168/16` — note this excludes
+   Tailscale's `100.64/10`, which is RFC 6598 shared space),
+4. anything else that is up.
+
+Ties within a tier fall back to what the routing table would have picked, then
+to a stable order, so repeated runs choose the same address. The choice is
+printed with its reason, and `-v` lists every address that was considered:
+
+```
+Serving C:\firmware on http://192.168.77.105:8080
+  address chosen: 192.168.77.105/24 on Ethernet covers 558 of 558 AP(s)
+```
+
+`-serve-ip` still overrides it outright. If `-fw-file` is not given and the directory holds exactly one `.rcks`
 control file (or, failing that, one `.bl7`), that is what gets pushed.
 
 Because the APs download in the background, well after their SSH sessions have

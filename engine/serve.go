@@ -28,6 +28,9 @@ type fileServer struct {
 	ln   net.Listener
 	srv  *http.Server
 
+	reason     string   // why this address was chosen
+	considered []string // the alternatives, for -v
+
 	mu       sync.Mutex
 	fetched  map[string]map[string]int64 // client IP -> path -> bytes served
 	complete map[string]bool             // client IP -> took a full image
@@ -36,10 +39,9 @@ type fileServer struct {
 
 // startFileServer binds the server and begins serving dir.
 //
-// advertiseIP is what the APs are told to fetch from; empty means work it out
-// from the route to sampleTarget, which is what picks the right interface on a
-// laptop with a VPN or a second NIC up.
-func startFileServer(dir, advertiseIP, sampleTarget string, port int) (*fileServer, error) {
+// advertiseIP is what the APs are told to fetch from; empty means choose one,
+// preferring an address on the same subnet as the APs - see chooseServeIP.
+func startFileServer(dir, advertiseIP string, targets []string, port int) (*fileServer, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, fmt.Errorf("-serve %s: %w", dir, err)
@@ -53,13 +55,14 @@ func startFileServer(dir, advertiseIP, sampleTarget string, port int) (*fileServ
 		return nil, fmt.Errorf("cannot listen on port %d: %w", port, err)
 	}
 
-	ip := advertiseIP
+	ip, reason, considered := advertiseIP, "", []string(nil)
 	if ip == "" {
-		ip = localIPFor(sampleTarget)
-	}
-	if ip == "" {
-		_ = ln.Close()
-		return nil, fmt.Errorf("could not work out which address the APs should fetch from; pass -serve-ip")
+		var err error
+		ip, reason, considered, err = chooseServeIP(targets)
+		if err != nil {
+			_ = ln.Close()
+			return nil, err
+		}
 	}
 
 	f := &fileServer{
@@ -69,6 +72,7 @@ func startFileServer(dir, advertiseIP, sampleTarget string, port int) (*fileServ
 		fetched:  map[string]map[string]int64{},
 		complete: map[string]bool{},
 	}
+	f.reason, f.considered = reason, considered
 	f.srv = &http.Server{Handler: f.handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = f.srv.Serve(ln) }()
 	return f, nil

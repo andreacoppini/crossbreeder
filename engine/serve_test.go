@@ -25,7 +25,7 @@ func serveTempDir(t *testing.T, files map[string]int) *fileServer {
 			t.Fatal(err)
 		}
 	}
-	f, err := startFileServer(dir, "127.0.0.1", "127.0.0.1", 0)
+	f, err := startFileServer(dir, "127.0.0.1", []string{"127.0.0.1"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
