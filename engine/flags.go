@@ -43,6 +43,8 @@ func parseFlags() options {
 	flag.DurationVar(&o.timeout, "timeout", 8*time.Second, "per-step timeout")
 	flag.BoolVar(&o.legacy, "legacy", true, "allow the SHA-1/CBC algorithms old ZoneFlex firmware needs")
 	flag.BoolVar(&o.verbose, "v", false, "dump the full session transcript for each AP")
+	flag.BoolVar(&o.ui, "ui", false, "open the browser console (the default when the program is started with no arguments)")
+	flag.IntVar(&o.uiPort, "ui-port", 0, "port for the browser console (0 picks a free one); it is bound to localhost only")
 	flag.BoolVar(&o.showVers, "version", false, "print version and exit")
 	flag.Parse()
 	return o

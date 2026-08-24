@@ -43,6 +43,31 @@ ping sweep + SSH   6.6s      (460 skipped in the sweep, 40 contacted)
 no gate (-probe none)  1m36s  (SSH attempted against all 500)
 ```
 
+## The console
+
+Run the binary with no arguments — or double-click it — and it opens a browser
+console instead of printing a usage error at a window that vanishes:
+
+```
+crossbreeder-engine            # or crossbreeder-engine -ui
+Crossbreeder console: http://127.0.0.1:52413
+```
+
+It is the same engine: the console and the command line run one job through one
+event stream, so they cannot drift apart. The page is bound to **localhost
+only** — the firmware server has to be reachable by the APs, but nothing should
+be able to drive a fleet of access points from off the machine.
+
+The layout is an operator console: targets, credentials, actions and tuning down
+the left; a live results grid that shows every address from the first second,
+including the ones that never answer; and a drawer with the log, the addresses
+that did not answer, the firmware server's transfer log, and the full SSH
+transcript of whichever AP you click.
+
+Anything that changes an AP — firmware, factory reset, reboot, a CLI command —
+is listed back to you for confirmation before the run starts. Everything except
+the passwords is remembered between sessions.
+
 ## Build
 
 ```

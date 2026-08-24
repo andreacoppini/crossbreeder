@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crossbreeder</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+
+<header>
+  <div class="brand">Crossbreeder <span id="ver"></span></div>
+  <button id="run" class="primary">Run</button>
+  <button id="stop" disabled>Stop</button>
+  <div class="phase" id="phase">idle</div>
+  <div class="progress"><i id="bar"></i></div>
+  <div class="counters">
+    <div class="counter"><b id="cTotal">0</b><i>addresses</i></div>
+    <div class="counter"><b id="cAlive">0</b><i>alive</i></div>
+    <div class="counter ok"><b id="cDone">0</b><i>done</i></div>
+    <div class="counter err"><b id="cFail">0</b><i>failed</i></div>
+  </div>
+  <button id="expCsv">CSV</button>
+  <button id="expJson">JSON</button>
+</header>
+
+<div class="app">
+<aside>
+
+  <section>
+    <h2>Targets <span id="nHosts"></span></h2>
+    <div class="body">
+      <textarea id="hosts" placeholder="Paste IP addresses, or a whole CSV — the first column of each row is used.&#10;&#10;192.168.77.115&#10;172.20.44.10"></textarea>
+      <div class="row">
+        <button id="pick">Load file…</button>
+        <button id="clear">Clear</button>
+      </div>
+      <input type="file" id="file" accept=".csv,.txt" hidden>
+      <div class="hint" id="hostHint">No addresses yet.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Credentials</h2>
+    <div class="body">
+      <label><span>AP username</span><input type="text" id="user" autocomplete="off" spellcheck="false"></label>
+      <label><span>AP password</span><input type="password" id="pass" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" id="alsoDefault"> Also try default (super / sp-admin)</label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Actions</h2>
+    <div class="body">
+      <label class="check"><input type="checkbox" id="firmware"> Change firmware</label>
+      <label class="check"><input type="checkbox" id="factory"> Factory reset</label>
+      <label class="check"><input type="checkbox" id="reboot"> Reboot</label>
+      <label><span>Run a CLI command</span><input type="text" id="command" placeholder="e.g. set scg ip 10.0.0.5" spellcheck="false"></label>
+      <div class="hint">With nothing ticked it only collects inventory.</div>
+      <div class="hint warn" id="destructive" hidden></div>
+    </div>
+  </section>
+
+  <section id="fwSection" class="collapsed">
+    <h2>Firmware server</h2>
+    <div class="body">
+      <label class="check"><input type="checkbox" id="serve" checked> Host the images from this machine</label>
+      <label><span>Folder to share</span><input type="text" id="serveDir" spellcheck="false"></label>
+      <label><span>Image / control file <span class="hint">(blank = pick automatically)</span></span><input type="text" id="fwFile" spellcheck="false"></label>
+      <div class="row">
+        <label><span>Serve port</span><input type="number" id="servePort" min="0"></label>
+        <label><span>Advertise IP</span><input type="text" id="serveIp" placeholder="auto" spellcheck="false"></label>
+      </div>
+      <div class="hint">Blank picks the address whose subnet holds the most APs.</div>
+      <label><span>Wait for downloads (s)</span><input type="number" id="serveWaitS" min="0"></label>
+      <hr style="border:0;border-top:1px solid var(--line);margin:2px 0">
+      <div class="hint">Or point the APs at an external server:</div>
+      <div class="row">
+        <label><span>Protocol</span>
+          <select id="fwProto"><option>http</option><option>tftp</option><option>ftp</option><option>https</option></select>
+        </label>
+        <label><span>Port</span><input type="text" id="fwPort"></label>
+      </div>
+      <label><span>Host</span><input type="text" id="fwHost" spellcheck="false"></label>
+      <div class="row">
+        <label><span>User</span><input type="text" id="fwUser" autocomplete="off" spellcheck="false"></label>
+        <label><span>Password</span><input type="password" id="fwPass" autocomplete="off"></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="collapsed">
+    <h2>Reachability</h2>
+    <div class="body">
+      <label><span>Probe</span>
+        <select id="probe">
+          <option value="icmp">ICMP ping</option>
+          <option value="tcp">TCP to SSH port</option>
+          <option value="both">Either</option>
+          <option value="none">Skip the check</option>
+        </select>
+      </label>
+      <div class="row">
+        <label><span>Timeout (ms)</span><input type="number" id="pingTimeoutMs" min="100"></label>
+        <label><span>Retries</span><input type="number" id="pingRetries" min="0"></label>
+      </div>
+      <label><span>Probes in flight</span><input type="number" id="pingConcurrency" min="1"></label>
+    </div>
+  </section>
+
+  <section class="collapsed">
+    <h2>Tuning</h2>
+    <div class="body">
+      <label><span>APs at once</span><input type="number" id="concurrency" min="1"></label>
+      <div class="row">
+        <label><span>SSH port</span><input type="text" id="sshPort"></label>
+        <label><span>Step timeout (s)</span><input type="number" id="timeoutS" min="1"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="legacy"> Allow legacy SSH algorithms</label>
+      <div class="hint">Old ZoneFlex firmware needs SHA-1 and CBC.</div>
+    </div>
+  </section>
+
+</aside>
+
+<main>
+  <div class="tablebar">
+    <input type="text" id="filter" placeholder="Filter by IP, model, status…">
+    <div class="chips" id="chips"></div>
+    <div class="hint" id="shown" style="margin-left:auto"></div>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr>
+        <th data-k="ip">IP Address</th>
+        <th data-k="mac">MAC</th>
+        <th data-k="model">Model</th>
+        <th data-k="firmware">Firmware</th>
+        <th data-k="ping">Ping</th>
+        <th data-k="status">Result</th>
+        <th data-k="fw">Firmware push</th>
+        <th data-k="error">Detail</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="tableEmpty">Nothing yet — paste some addresses and press Run.</div>
+  </div>
+
+  <div class="drawer" id="drawer">
+    <div class="tabs">
+      <div class="tab on" data-p="log">Log</div>
+      <div class="tab" data-p="sweep">Did not answer<span class="n" id="nDead"></span></div>
+      <div class="tab" data-p="xfer">Transfers<span class="n" id="nXfer"></span></div>
+      <div class="tab" data-p="tx">Transcript<span class="n" id="txWho"></span></div>
+      <div style="margin-left:auto"><button id="grow">Expand</button></div>
+    </div>
+    <div class="pane" id="pLog"></div>
+    <div class="pane" id="pSweep" hidden></div>
+    <div class="pane" id="pXfer" hidden></div>
+    <div class="pane" id="pTx" hidden><span class="empty">Select an AP to see its session.</span></div>
+  </div>
+</main>
+</div>
+
+<div class="modal" id="confirm" hidden>
+  <div>
+    <h3>Confirm</h3>
+    <div>This run will act on <b id="cN">0</b> access points:</div>
+    <ul id="cList"></ul>
+    <div class="hint">These take effect immediately and cannot be undone from here.</div>
+    <div class="btns">
+      <button id="cCancel">Cancel</button>
+      <button id="cGo" class="danger">Run anyway</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
