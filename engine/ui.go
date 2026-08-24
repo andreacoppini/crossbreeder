@@ -63,7 +63,7 @@ func serveUI(opt options) error {
 	mux.HandleFunc("/api/export", u.handleExport)
 	mux.HandleFunc("/api/defaults", u.handleDefaults)
 
-	fmt.Printf("Crossbreeder console: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", url)
+	fmt.Printf("Crossbreeder %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
 	openBrowser(url)
 
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}

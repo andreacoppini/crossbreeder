@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -92,13 +93,22 @@ func run(opt options) error {
 
 	// No arguments at all means somebody double-clicked the exe, so open the
 	// console instead of printing a usage error at a window that vanishes.
-	if opt.ui || (flag.NFlag() == 0 && opt.csvPath == "") {
+	// os.Args is the direct question; flag.NFlag() only counts what parsed.
+	if opt.ui || len(os.Args) == 1 {
 		return serveUI(opt)
+	}
+
+	// Without this, an empty -csv reaches os.Open("") and reports "open : The
+	// system cannot find the file specified", which names neither the problem
+	// nor the way out.
+	if opt.csvPath == "" {
+		return fmt.Errorf("no address list given: pass -csv <file>, or run %s with no arguments (or -ui) to open the console",
+			filepath.Base(os.Args[0]))
 	}
 
 	hosts, err := loadHosts(opt.csvPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read %s: %w", opt.csvPath, err)
 	}
 	if len(hosts) == 0 {
 		return fmt.Errorf("no IP addresses found in %s", opt.csvPath)

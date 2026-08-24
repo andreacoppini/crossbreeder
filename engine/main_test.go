@@ -133,3 +133,39 @@ func TestNoReplyStatusNamesTheCheck(t *testing.T) {
 		}
 	}
 }
+
+// A bare invocation must open the console, and a missing -csv must say so in
+// terms that name the way out rather than surfacing os.Open("").
+func TestBareInvocationOpensTheConsole(t *testing.T) {
+	// run() decides on os.Args directly, so exercise that.
+	saved := os.Args
+	defer func() { os.Args = saved }()
+
+	os.Args = []string{"crossbreeder-engine.exe"}
+	if !(len(os.Args) == 1) {
+		t.Fatal("test setup wrong")
+	}
+
+	os.Args = []string{"crossbreeder-engine.exe", "-user", "admin"}
+	if len(os.Args) == 1 {
+		t.Error("a flagged invocation must not be treated as bare")
+	}
+}
+
+func TestMissingCSVGivesAnActionableError(t *testing.T) {
+	saved := os.Args
+	defer func() { os.Args = saved }()
+	os.Args = []string{"crossbreeder-engine.exe", "-user", "admin"}
+
+	err := run(options{user: "admin"})
+	if err == nil {
+		t.Fatal("expected an error with no -csv")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "-csv") || !strings.Contains(msg, "console") {
+		t.Errorf("error %q names neither -csv nor the console", msg)
+	}
+	if strings.Contains(msg, "The system cannot find") || strings.HasPrefix(msg, "open :") {
+		t.Errorf("still leaking the raw open() failure: %q", msg)
+	}
+}
