@@ -118,6 +118,30 @@ without `-pass` on a terminal prompts rather than trying an empty password.
   Turn it off on a fleet that is entirely modern.
 - `-timeout` — per-step timeout, default 8s. The whole-AP deadline is 12× this.
 
+### Firmware pushes
+
+`fw update` only *starts* the job. The AP answers "In progress" and then fetches
+the image in the background, long after this tool has disconnected, so a "Done"
+row means the AP accepted the instruction — not that the image landed. The AP's
+own answer is kept in the `Firmware Push` column; `-fw-wait 30s` holds the
+session open afterwards and captures whatever progress it prints.
+
+Watch the image size against the protocol. Classic TFTP (RFC 1350) numbers its
+512-byte blocks in 16 bits, so it tops out at 65,535 x 512 = **32 MiB**. Current
+Ruckus images are larger than that — a 46 MiB `.bl7` needs 94,295 blocks — and
+TFTP's lockstep ack-per-block makes it slow and fragile besides. Use
+`-fw-proto http` for anything over 32 MiB.
+
+`fw set` values that are empty are skipped: the AP rejects the whole command and
+prints its usage page rather than accepting a blank setting, so `-fw-user` and
+`-fw-pass` are only sent when you supply them.
+
+### Factory resets
+
+`set factory` stages the reset; the AP does not act on it until it reboots. So
+`-factory` implies `-reboot` — a reset on its own would leave the AP exactly as
+it was.
+
 ## Differences from the Xojo version
 
 - The ping sweep is in-process ICMP, not a shell-out to `ping.exe`. No process
@@ -127,7 +151,8 @@ without `-pass` on a terminal prompts rather than trying an empty password.
   administrator rights are needed; on macOS and Linux it uses an ICMP datagram
   socket, falling back to a raw socket when run as root.
 - `set factory` and `reboot` run **last**. The original issued `set factory`
-  before the firmware commands, which on a real AP discards them.
+  before the firmware commands, which on a real AP discards them. `-factory`
+  also implies a reboot, without which the reset never happens.
 - The ZoneFlex and Unleashed paths are one code path parameterised by prompt
   (`dialect` in `ap/session.go`), not two copies of the same 90 lines.
 - Field extraction is plain string scanning, not a regex assembled from device
@@ -159,3 +184,8 @@ Proof of concept. Two things have not met the real world yet:
   most likely to need adjustment on first contact.
 - The Windows build has been run against a live 558-AP estate: the sweep cleared
   59 silent addresses in 3.0s and the whole run finished in 6.5s at `-c 100`.
+  `-reboot`, `-factory` and the `fw` sequence have been exercised on a real
+  R550 (7.2.0). What has *not* been confirmed end to end is an image actually
+  landing and booting - see the TFTP size note above.
+- The Unleashed dialect and pre-2015 ZoneFlex firmware (`-legacy`) have still
+  only met the fake AP.

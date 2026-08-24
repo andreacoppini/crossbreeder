@@ -181,9 +181,17 @@ func (f *fakeAP) zoneFlexLoop(in *bufio.Reader, say func(string)) {
 			say("Ruckus R720 Multimedia Hotzone Wireless AP\r\nVersion: 110.0.0.0.1347\r\nOK\r\n")
 		case "get boarddata":
 			say("Board Data:\r\nCustomer ID: 0, base 8C:0C:90:12:34:56\r\nOK\r\n")
+		case "fw update":
+			say("fw: Updating rcks_wlan.main ...\r\n**fw(4327) : In progress\r\n")
 		case "reboot":
 			return
 		default:
+			// The real CLI rejects a "fw set" with no value and prints its
+			// whole usage page rather than accepting an empty setting.
+			if strings.HasPrefix(cmd, "fw set") && len(strings.Fields(cmd)) < 4 {
+				say("\r\nUsage: fw set <parameter> <value>\r\n")
+				break
+			}
 			say("OK\r\n")
 		}
 		say("rkscli: ")
@@ -442,5 +450,81 @@ func TestPromptInsideBannerIsNotAPrompt(t *testing.T) {
 	}
 	if i != 0 {
 		t.Errorf("matched pattern %d; the \"> \" inside the banner was treated as a prompt", i)
+	}
+}
+
+// With TFTP there are no server credentials to set, and sending the command
+// anyway made the AP reject it and dump its usage page.
+func TestFirmwareSkipsEmptyServerCredentials(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 0, false)
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	cfg.Actions = Actions{UpdateFirmware: true}
+	cfg.Firmware = Firmware{Proto: "tftp", Host: "192.168.77.105", Port: "69", Filename: "118.2.0.0.875.bl7"}
+
+	r := Run(t.Context(), host, cfg)
+	if r.Status != "Done" {
+		t.Fatalf("status = %q err = %q", r.Status, r.Error)
+	}
+
+	for _, cmd := range f.seen() {
+		if cmd == "fw set user" || cmd == "fw set password" || strings.HasSuffix(cmd, "set user ") {
+			t.Errorf("sent %q with no value", cmd)
+		}
+	}
+	got := strings.Join(f.seen(), "\n")
+	if strings.Contains(got, "fw set user") || strings.Contains(got, "fw set password") {
+		t.Errorf("credential commands sent for a TFTP push:\n%s", got)
+	}
+	// The settings that do have values must still be sent.
+	for _, want := range []string{"fw set proto tftp", "fw set host 192.168.77.105", "fw set control 118.2.0.0.875.bl7", "fw update"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestFirmwareSendsCredentialsWhenGiven(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 0, false)
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	cfg.Actions = Actions{UpdateFirmware: true}
+	cfg.Firmware = Firmware{Proto: "ftp", Host: "10.0.0.9", Port: "21", User: "anon", Password: "pw", Filename: "x.bl7"}
+
+	if r := Run(t.Context(), host, cfg); r.Status != "Done" {
+		t.Fatalf("status = %q err = %q", r.Status, r.Error)
+	}
+	got := strings.Join(f.seen(), "\n")
+	for _, want := range []string{"fw set user anon", "fw set password pw"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+// "fw update" only starts the job. Its answer has to survive into the result,
+// or a rejected push is indistinguishable from a successful one.
+func TestFirmwareUpdateResponseIsCaptured(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 0, false)
+	host, port := f.addr()
+
+	cfg := testConfig()
+	cfg.Port = port
+	cfg.Actions = Actions{UpdateFirmware: true}
+	cfg.Firmware = Firmware{Proto: "tftp", Host: "10.0.0.9", Port: "69", Filename: "x.bl7"}
+
+	r := Run(t.Context(), host, cfg)
+	if r.Status != "Done" {
+		t.Fatalf("status = %q err = %q", r.Status, r.Error)
+	}
+	if !strings.Contains(r.FwStatus, "In progress") {
+		t.Errorf("FwStatus = %q, want the AP's own answer", r.FwStatus)
+	}
+	if strings.Contains(r.FwStatus, "rkscli") {
+		t.Errorf("FwStatus carries the prompt: %q", r.FwStatus)
 	}
 }

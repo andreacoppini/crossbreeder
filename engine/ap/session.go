@@ -66,6 +66,9 @@ type Config struct {
 	ConnectTimeout time.Duration
 	DialogTimeout  time.Duration
 	Deadline       time.Duration
+	// FirmwareWait, if set, holds the session open after "fw update" so the
+	// AP's own progress output can be captured instead of guessed at.
+	FirmwareWait time.Duration
 	// LegacyAlgorithms re-enables the SHA-1 / CBC primitives that pre-2015
 	// ZoneFlex firmware negotiates and modern SSH stacks refuse by default.
 	LegacyAlgorithms bool
@@ -81,6 +84,7 @@ type Result struct {
 	Firmware   string        `json:"firmware,omitempty"`
 	Kind       Kind          `json:"kind,omitempty"`
 	Status     string        `json:"status"`
+	FwStatus   string        `json:"fw_status,omitempty"`
 	Error      string        `json:"error,omitempty"`
 	Duration   time.Duration `json:"-"`
 	DurationMS int64         `json:"duration_ms"`
@@ -243,6 +247,20 @@ func run(ctx context.Context, host string, cfg Config, r *Result) error {
 				return err
 			}
 		}
+		// "fw update" only starts the job; the AP answers "In progress" and
+		// fetches the image in the background, long after this session ends.
+		// Keep what it said so a rejected push is not reported as "Done".
+		out, err := exchangeOut(e, "fw update", d.prompt)
+		if err != nil {
+			return err
+		}
+		r.FwStatus = fwSummary(out)
+		if cfg.FirmwareWait > 0 {
+			// Hold the session open and keep whatever progress the AP prints.
+			if more := e.Collect(cfg.FirmwareWait); strings.TrimSpace(more) != "" {
+				r.FwStatus = fwSummary(out + more)
+			}
+		}
 	}
 	if cfg.Actions.CustomCommand != "" {
 		if err := exchange(e, cfg.Actions.CustomCommand, d.prompt); err != nil {
@@ -262,19 +280,30 @@ func run(ctx context.Context, host string, cfg Config, r *Result) error {
 	return nil
 }
 
+// firmwareCommands builds the setup sequence. "fw update" is issued separately
+// so its answer can be captured.
+//
+// A "fw set" with an empty value is not a no-op: the AP rejects the whole
+// command and prints its usage page, which for TFTP - where there are no
+// credentials to set - meant two bogus commands on every push.
 func firmwareCommands(fw Firmware, model string) []string {
 	filename := strings.ReplaceAll(fw.Filename, "%M", model)
-	return []string{
-		"fw auto disable",
-		"fw set proto " + fw.Proto,
-		"fw set port " + fw.Port,
-		"fw set control " + filename,
-		"fw set host " + fw.Host,
-		"fw set user " + fw.User,
-		"fw set password " + fw.Password,
-		"fw auto enable",
-		"fw update",
+	pairs := [][2]string{
+		{"proto", fw.Proto},
+		{"port", fw.Port},
+		{"control", filename},
+		{"host", fw.Host},
+		{"user", fw.User},
+		{"password", fw.Password},
 	}
+	cmds := []string{"fw auto disable"}
+	for _, p := range pairs {
+		if strings.TrimSpace(p[1]) == "" {
+			continue
+		}
+		cmds = append(cmds, "fw set "+p[0]+" "+p[1])
+	}
+	return append(cmds, "fw auto enable")
 }
 
 func dial(ctx context.Context, host string, cfg Config) (*ssh.Client, error) {
@@ -385,6 +414,21 @@ func login(e *expecter, creds []Credentials) (dialect, error) {
 		}
 	}
 	return dialect{}, fmt.Errorf("could not reach a CLI prompt; last seen: %s", tail(e.Pending(), 160))
+}
+
+// fwSummary reduces the AP's answer to "fw update" to the part worth carrying
+// into a results table: its own status lines, not the echoed command.
+func fwSummary(out string) string {
+	var keep []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		switch {
+		case line == "", line == "fw update", strings.HasPrefix(line, "rkscli"), strings.HasPrefix(line, "(ap-mode)"):
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return tail(strings.Join(keep, " "), 200)
 }
 
 func credSummary(creds []Credentials) string {

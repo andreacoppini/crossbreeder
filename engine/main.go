@@ -42,6 +42,7 @@ type options struct {
 	fwUser   string
 	fwPass   string
 	fwFile   string
+	fwWait   time.Duration
 	factory  bool
 	reboot   bool
 	command  string
@@ -92,18 +93,27 @@ func run(opt options) error {
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
 	}
 
+	// "set factory" stages the reset; the AP does not act on it until it
+	// reboots, so a factory reset on its own leaves the AP exactly as it was.
+	reboot := opt.reboot
+	if opt.factory && !reboot {
+		fmt.Fprintln(os.Stderr, "note: a factory reset only takes effect on reboot, so the APs will be rebooted")
+		reboot = true
+	}
+
 	cfg := ap.Config{
 		Credentials: creds,
 		Actions: ap.Actions{
 			UpdateFirmware: opt.fw,
 			FactoryReset:   opt.factory,
 			CustomCommand:  opt.command,
-			Reboot:         opt.reboot,
+			Reboot:         reboot,
 		},
 		Firmware: ap.Firmware{
 			Proto: opt.fwProto, Host: opt.fwHost, Port: opt.fwPort,
 			User: opt.fwUser, Password: opt.fwPass, Filename: opt.fwFile,
 		},
+		FirmwareWait:     opt.fwWait,
 		Port:             opt.sshPort,
 		ConnectTimeout:   opt.timeout,
 		DialogTimeout:    opt.timeout,
@@ -290,7 +300,7 @@ func writeResults(path string, results []ap.Result) error {
 
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Error"}); err != nil {
+	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Error"}); err != nil {
 		return err
 	}
 	for _, r := range results {
@@ -298,7 +308,7 @@ func writeResults(path string, results []ap.Result) error {
 		if r.Reachable {
 			ping = fmt.Sprintf("%.1f", r.PingMS)
 		}
-		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.Error}); err != nil {
+		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.FwStatus, r.Error}); err != nil {
 			return err
 		}
 	}

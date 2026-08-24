@@ -24,7 +24,8 @@ func parseFlags() options {
 	flag.StringVar(&o.fwPass, "fw-pass", "", "firmware server password")
 	flag.StringVar(&o.fwFile, "fw-file", "", "firmware filename; %M is replaced with the detected model")
 
-	flag.BoolVar(&o.factory, "factory", false, "reset the AP to factory defaults")
+	flag.DurationVar(&o.fwWait, "fw-wait", 0, "after starting the update, hold the session open this long to capture the AP's progress output")
+	flag.BoolVar(&o.factory, "factory", false, "reset the AP to factory defaults (implies -reboot; the reset is inert until then)")
 	flag.BoolVar(&o.reboot, "reboot", false, "reboot the AP when finished")
 	flag.StringVar(&o.command, "cmd", "", "run an arbitrary AP CLI command")
 

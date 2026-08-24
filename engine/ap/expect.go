@@ -85,6 +85,28 @@ type pat struct {
 func anywhere(s string) pat { return pat{text: s} }
 func atEnd(s string) pat    { return pat{text: s, atEnd: true} }
 
+// Collect keeps reading for up to d and returns whatever arrived. It is for
+// watching a long-running operation that prints progress without ever coming
+// back to a prompt.
+func (e *expecter) Collect(d time.Duration) string {
+	deadline := time.NewTimer(d)
+	defer deadline.Stop()
+	for {
+		select {
+		case chunk, ok := <-e.rx:
+			if !ok {
+				return e.drain()
+			}
+			e.record(chunk)
+			e.buf.Write(chunk)
+		case <-e.rxErr:
+			return e.drain()
+		case <-deadline.C:
+			return e.drain()
+		}
+	}
+}
+
 // Expect reads until one of want appears anywhere in the stream. It returns the
 // index of the pattern that matched and everything consumed up to and including
 // it.
