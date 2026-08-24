@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -44,6 +45,7 @@ type options struct {
 	fwFile  string
 	fwWait  time.Duration
 
+	serve     serveFlag
 	serveDir  string
 	servePort int
 	serveIP   string
@@ -77,6 +79,15 @@ func main() {
 }
 
 func run(opt options) error {
+	serveDir, rest, err := resolveServeDir(opt.serve, flag.Args(), workingDir())
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return fmt.Errorf("unexpected argument %q", rest[0])
+	}
+	opt.serveDir = serveDir
+
 	hosts, err := loadHosts(opt.csvPath)
 	if err != nil {
 		return err

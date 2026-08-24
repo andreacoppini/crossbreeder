@@ -24,7 +24,7 @@ func parseFlags() options {
 	flag.StringVar(&o.fwPass, "fw-pass", "", "firmware server password")
 	flag.StringVar(&o.fwFile, "fw-file", "", "firmware filename; %M is replaced with the detected model")
 
-	flag.StringVar(&o.serveDir, "serve", "", "host the firmware images from this directory over the tool's own HTTP server (sets -fw-proto/-fw-host/-fw-port)")
+	flag.Var(&o.serve, "serve", "host the firmware images over the tool's own HTTP server (sets -fw-proto/-fw-host/-fw-port); shares the current directory unless one is given")
 	flag.IntVar(&o.servePort, "serve-port", 8080, "port for the built-in image server; 0 picks a free one")
 	flag.StringVar(&o.serveIP, "serve-ip", "", "address the APs should fetch from (default: whichever local address routes to them)")
 	flag.DurationVar(&o.serveWait, "serve-wait", 30*time.Minute, "how long to keep serving after the pushes are started")

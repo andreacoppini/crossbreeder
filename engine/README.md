@@ -121,14 +121,23 @@ without `-pass` on a terminal prompts rather than trying an empty password.
 
 ### Hosting the images
 
-`-serve <dir>` turns the tool into the firmware server as well as the client, so
-a push needs nothing installed but this binary:
+`-serve` turns the tool into the firmware server as well as the client, so a
+push needs nothing installed but this binary. With the images sitting next to
+the exe, that is the whole command:
 
 ```
-crossbreeder-engine -csv aps.csv -user admin -ask-pass -fw -serve C:\firmware
+crossbreeder-engine -csv aps.csv -user admin -ask-pass -fw -serve
 ```
 
-It binds an HTTP server on the given directory, works out which local address
+`-serve` on its own shares the directory the tool was started in. To share a
+different one, name it — either form works:
+
+```
+crossbreeder-engine ... -fw -serve C:\firmware
+crossbreeder-engine ... -fw -serve=C:\firmware
+```
+
+It binds an HTTP server on that directory, works out which local address
 routes to the APs, and fills in `-fw-proto http`, `-fw-host` and `-fw-port`
 itself. If `-fw-file` is not given and the directory holds exactly one `.rcks`
 control file (or, failing that, one `.bl7`), that is what gets pushed.
@@ -151,9 +160,11 @@ counted too and called out rather than being reported as missing.
 
 Other flags: `-serve-port` (default 8080, `0` picks a free one) and `-serve-ip`
 to override the advertised address. The server is GET/HEAD only and confined to
-the directory given, but it is still a listening port serving files to the
-network — point it at a directory holding firmware, not at a general share.
-Windows will prompt for a firewall exception the first time.
+the directory it is given, but it is still a listening port serving files to the
+network. Since the default is the directory you started in, run it from one
+holding firmware rather than from a general-purpose folder — and name a
+directory explicitly if you are unsure what is in the current one. Windows will
+prompt for a firewall exception the first time.
 
 ### Firmware pushes
 
