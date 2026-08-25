@@ -51,4 +51,4 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
   reboots on its own schedule, which is what the re-scan is there to follow.
 
 Full detail, including why this was rebuilt rather than optimised in place, is
-in [`docs/ARCHITECTURE-REVIEW.md`](../docs/ARCHITECTURE-REVIEW.md).
+in [`docs/ARCHITECTURE-REVIEW.md`](https://github.com/andreacoppini/crossbreeder/blob/master/docs/ARCHITECTURE-REVIEW.md).
