@@ -19,9 +19,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Checks out whatever ref triggered this: the tag on a tag push, or the
+      # branch it was dispatched from. When dispatched, the release action
+      # creates the tag at that commit.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v5
         with:
@@ -38,8 +39,9 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          [ -n "${{ github.event.inputs.tag || '' }}" ] && VERSION="${{ github.event.inputs.tag }}" && VERSION="${VERSION#v}"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "Building ${VERSION}"
           mkdir -p ../dist
           LDFLAGS="-s -w -X main.version=${VERSION}"
 
