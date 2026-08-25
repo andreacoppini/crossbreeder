@@ -220,3 +220,40 @@ td.err { color: var(--err); white-space: normal; font-family: system-ui, sans-se
 .pklist { height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
 .pklist div { padding: 5px 10px; cursor: pointer; font-family: var(--mono); font-size: 12px; }
 .pklist div:hover { background: #1d2937; }
+
+/* ---- running state ---- */
+
+/* Nothing else on screen says "this will run until you stop it", so the Stop
+   button carries that itself while a run is in flight. */
+button.armed {
+  background: #3a1c20;
+  border-color: #7c3038;
+  color: #ffc9c9;
+  animation: armed-pulse 2.2s ease-in-out infinite;
+}
+button.armed:hover:not(:disabled) { background: #4a2329; border-color: #9a3b45; }
+@keyframes armed-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 92, 92, .30); }
+  50%      { box-shadow: 0 0 12px 2px rgba(255, 92, 92, .55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.armed { animation: none; box-shadow: 0 0 10px 1px rgba(255, 92, 92, .45); }
+}
+
+/* The config panel is the run's input; editing it mid-run would describe a run
+   that is not the one happening. */
+aside.locked .body { opacity: .5; }
+
+.locknote {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 8px 12px 4px;
+  padding: 7px 10px;
+  border: 1px solid #7c3038;
+  border-left-width: 3px;
+  border-radius: 5px;
+  background: #2a1619;
+  color: #ffc9c9;
+  font-size: 11.5px;
+}

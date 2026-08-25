@@ -382,6 +382,7 @@ function rowClick(ev, ip, listNow) {
 }
 
 function removeSelected() {
+  if (running) return toast('Stop the run before changing the list.');
   if (!picked.size) return;
   for (const ip of picked) {
     removed.add(ip);
@@ -395,6 +396,7 @@ function removeSelected() {
   hostsChanged();
   picked.clear();
   anchor = null;
+  recount();
   render();
 }
 
@@ -414,6 +416,18 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape' && picked.size) { picked.clear(); render(); }
 });
+
+// Counters are counted, not accumulated: a re-scan emits a row per AP per pass,
+// so incrementing per event made "done" climb with every scan.
+function recount() {
+  let done = 0, fail = 0;
+  for (const r of rows.values()) {
+    if (r.status === 'Done') done++;
+    else if (/Fail|Error/i.test(r.status)) fail++;
+  }
+  setCount('cDone', done);
+  setCount('cFail', fail);
+}
 
 function render() {
   const list = visible();
@@ -436,7 +450,7 @@ function render() {
   }
   rowsEl.replaceChildren(frag);
   $('selInfo').textContent = picked.size ? `${picked.size} selected` : '';
-  $('removeSel').disabled = picked.size === 0;
+  $('removeSel').disabled = running || picked.size === 0;
   $('removeSel').textContent = picked.size ? `Remove ${picked.size}` : 'Remove';
   updateChips();
 }
@@ -560,7 +574,7 @@ async function start() {
   for (const p of ['pLog', 'pSweep', 'pXfer']) $(p).replaceChildren();
   $('pTx').textContent = 'Select an AP to see its session.';
   $('nDead').textContent = ''; $('nXfer').textContent = '';
-  nDone = 0; nFail = 0; nXfer = 0;
+  nXfer = 0;
   setCount('cTotal', hostList().length); setCount('cAlive', 0);
   setCount('cDone', 0); setCount('cFail', 0);
   render();
@@ -584,7 +598,23 @@ function setRunning(v) {
   running = v;
   $('run').disabled = v;
   $('stop').disabled = !v;
+  // A run only ends when it is stopped, so the button has to say so.
+  $('stop').classList.toggle('armed', v);
+  lockPanel(v);
+  $('removeSel').disabled = v || picked.size === 0;
   if (!v) { $('bar').style.width = '0%'; }
+}
+
+// The left column is the run's input. Letting it be edited mid-run would leave
+// the form describing a run other than the one in flight — and removing rows
+// from a list the engine is still working through is worse than useless.
+function lockPanel(locked) {
+  const aside = document.querySelector('aside');
+  aside.classList.toggle('locked', locked);
+  $('lockNote').hidden = !locked;
+  for (const el of aside.querySelectorAll('input, select, textarea, button')) {
+    el.disabled = locked;
+  }
 }
 
 const setCount = (id, n) => { $(id).textContent = n; };
@@ -599,7 +629,7 @@ function toast(msg) {
 
 /* ---------- event stream ---------- */
 
-let nFail = 0, nDone = 0, nXfer = 0;
+let nXfer = 0;
 
 const src = new EventSource('/api/events');
 src.onmessage = (m) => {
@@ -645,8 +675,7 @@ src.onmessage = (m) => {
         status: r.status, fw: r.fw_status || '', error: r.error || '', note: r.note || '',
         transcript: e.transcript || '',
       });
-      if (r.status === 'Done') nDone++; else if (/Fail|Error/i.test(r.status)) nFail++;
-      setCount('cDone', nDone); setCount('cFail', nFail);
+      recount();
       if (e.total) $('bar').style.width = `${(e.done / e.total) * 100}%`;
       render();
       break;
