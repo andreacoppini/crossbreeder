@@ -69,7 +69,7 @@ func serveUI(opt options) error {
 	mux.HandleFunc("/api/browse", u.handleBrowse)
 	mux.HandleFunc("/api/firmware", u.handleFirmware)
 
-	fmt.Printf("Crossbreeder %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
+	fmt.Printf("Crossbreeder Plus %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
 	openBrowser(url)
 
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}

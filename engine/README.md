@@ -1,7 +1,7 @@
-# crossbreeder-engine (proof of concept)
+# Crossbreeder Plus
 
-A Go implementation of Crossbreeder's SSH core, written to answer one question:
-what does it take to stop doing one AP at a time? See
+A rebuild of Crossbreeder's SSH core that works the access points in parallel,
+with a browser console and a scriptable command line over the same engine. See
 [`../docs/ARCHITECTURE-REVIEW.md`](../docs/ARCHITECTURE-REVIEW.md) for the
 analysis this belongs to.
 
@@ -49,7 +49,7 @@ Run the binary with no arguments — or double-click it — and it opens a brows
 console instead of printing a usage error at a window that vanishes:
 
 ```
-crossbreeder-engine            # or crossbreeder-engine -ui
+crossbreeder-plus            # or crossbreeder-plus -ui
 Crossbreeder console: http://127.0.0.1:52413
 ```
 
@@ -77,9 +77,9 @@ bring them back.
 ## Build
 
 ```
-go build -o crossbreeder-engine .            # this platform
-GOOS=windows GOARCH=amd64 go build -o crossbreeder-engine.exe .
-GOOS=darwin  GOARCH=arm64 go build -o crossbreeder-engine-macos .
+go build -o crossbreeder-plus .            # this platform
+GOOS=windows GOARCH=amd64 go build -o crossbreeder-plus.exe .
+GOOS=darwin  GOARCH=arm64 go build -o crossbreeder-plus-macos .
 ```
 
 No runtime, no installer, no licence key: one static binary per platform, built
@@ -90,13 +90,13 @@ from any one machine.
 Inventory only — the default when no action is selected, same as the GUI:
 
 ```
-crossbreeder-engine -csv aps.csv -user admin -pass Ruckus123 -c 50 -out results.csv
+crossbreeder-plus -csv aps.csv -user admin -pass Ruckus123 -c 50 -out results.csv
 ```
 
 Firmware push, 20 at a time (sized to what the firmware server can serve):
 
 ```
-crossbreeder-engine -csv aps.csv -user admin -pass Ruckus123 -default -c 20 \
+crossbreeder-plus -csv aps.csv -user admin -pass Ruckus123 -default -c 20 \
   -fw -fw-proto http -fw-host 10.0.0.9 -fw-port 8080 -fw-file "%M_110.0.0.0.1347.bl7" \
   -reboot -out results.json
 ```
@@ -107,7 +107,7 @@ with stray quotes mid-field, which strict CSV parsing rejects outright. `%M` in
 `-fw-file` is replaced with the model detected on each AP. `-out` writes CSV or
 JSON depending on the extension. `-v` dumps the full session transcript.
 
-Run `crossbreeder-engine -h` for the rest.
+Run `crossbreeder-plus -h` for the rest.
 
 ### Passwords
 
@@ -118,9 +118,9 @@ way. A password that works when typed into an SSH client and fails here is
 almost always the shell, not the AP.
 
 ```
-crossbreeder-engine -csv aps.csv -user admin -ask-pass          # prompt, no echo
+crossbreeder-plus -csv aps.csv -user admin -ask-pass          # prompt, no echo
 set CBPASS=...                                                   # cmd
-crossbreeder-engine -csv aps.csv -user admin -pass-env CBPASS
+crossbreeder-plus -csv aps.csv -user admin -pass-env CBPASS
 ```
 
 `-ask-pass` also reads a piped line, so it stays scriptable. Giving `-user`
@@ -164,15 +164,15 @@ push needs nothing installed but this binary. With the images sitting next to
 the exe, that is the whole command:
 
 ```
-crossbreeder-engine -csv aps.csv -user admin -ask-pass -fw -serve
+crossbreeder-plus -csv aps.csv -user admin -ask-pass -fw -serve
 ```
 
 `-serve` on its own shares the directory the tool was started in. To share a
 different one, name it — either form works:
 
 ```
-crossbreeder-engine ... -fw -serve C:\firmware
-crossbreeder-engine ... -fw -serve=C:\firmware
+crossbreeder-plus ... -fw -serve C:\firmware
+crossbreeder-plus ... -fw -serve=C:\firmware
 ```
 
 It binds an HTTP server on that directory, works out which of this machine's
@@ -316,7 +316,7 @@ platform will not hand out an ICMP socket.
 
 ## Status
 
-Proof of concept. Two things have not met the real world yet:
+Released as v1.0.0. Two things have not met the real world yet:
 
 - The CLI dialogue has been exercised against the fake AP, not real hardware.
   SSH algorithm negotiation with old ZoneFlex firmware (`-legacy`) is the part

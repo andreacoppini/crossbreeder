@@ -1,9 +1,11 @@
-// Command crossbreeder-engine is a proof-of-concept replacement for the SSH
-// core of the Xojo Crossbreeder tool. Same job — walk a CSV of standalone
-// Ruckus APs and collect inventory, push firmware, reset or reboot them — but
-// the APs are worked in parallel instead of one at a time.
+// Command crossbreeder-plus walks a list of standalone Ruckus access points and
+// collects inventory, pushes firmware, resets or reboots them — working the APs
+// in parallel rather than one at a time.
 //
-//	crossbreeder-engine -csv aps.csv -user admin -pass Ruckus123 -c 50 -out results.csv
+// Run it with no arguments for the browser console, or drive it from the
+// command line:
+//
+//	crossbreeder-plus -csv aps.csv -user admin -ask-pass -c 50 -out results.csv
 package main
 
 import (
@@ -25,7 +27,7 @@ import (
 	"github.com/andreacoppini/crossbreeder/engine/ap"
 )
 
-var version = "0.1.0-poc"
+var version = "1.0.0"
 
 type options struct {
 	csvPath     string
@@ -76,7 +78,7 @@ type options struct {
 func main() {
 	opt := parseFlags()
 	if opt.showVers {
-		fmt.Println("crossbreeder-engine", version)
+		fmt.Println("Crossbreeder Plus", version)
 		return
 	}
 	if err := run(opt); err != nil {
