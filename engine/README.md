@@ -260,6 +260,11 @@ first pass does whatever was ticked; every pass after that only looks:
 - a version different from the one it started with is reported as
   **Upgraded from &lt;old&gt;**.
 
+The interval is the rest *between* passes, counted from the end of one to the
+start of the next, so a pass over a large estate can never be overtaken by the
+next one however short the interval is set. If a pass runs longer than the
+interval, the log says so.
+
 It never stops on its own; Stop ends it. When a firmware push is in flight the
 image server stays up alongside it and downloads are reported in the Transfers
 pane and the server panel, so an AP that never finishes a download cannot hold

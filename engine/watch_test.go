@@ -27,6 +27,9 @@ type restartableAP struct {
 	mu     sync.Mutex
 	ln     net.Listener
 	verStr string
+	// stallBeforeLogin models an AP that is slow to answer, so a pass can be
+	// made to take longer than the re-scan interval.
+	stallBeforeLogin time.Duration
 }
 
 func newRestartableAP(t *testing.T, version string) *restartableAP {
@@ -127,6 +130,12 @@ func (a *restartableAP) serve(c net.Conn) {
 }
 
 func (a *restartableAP) cli(ch ssh.Channel) {
+	a.mu.Lock()
+	stall := a.stallBeforeLogin
+	a.mu.Unlock()
+	if stall > 0 {
+		time.Sleep(stall)
+	}
 	in := bufio.NewReader(ch)
 	say := func(s string) { _, _ = ch.Write([]byte(s)) }
 	read := func() bool {
@@ -470,5 +479,79 @@ func TestReScanReportsDuringThePassNotOnlyAfter(t *testing.T) {
 	}
 	if !has("read-progress") {
 		t.Errorf("no version-read progress during the pass: %v", during)
+	}
+}
+
+// The interval is the rest between passes, measured from the end of one to the
+// start of the next. With a ticker, a pass that overran the interval left a
+// tick already queued and the next pass began the instant the last finished.
+func TestPassesAreSpacedFromTheEndOfThePrevious(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	// The AP stalls before its login banner, so every pass takes at least this
+	// long — comfortably longer than the interval below.
+	const stall = 700 * time.Millisecond
+	const interval = 200 * time.Millisecond
+
+	fake := newRestartableAP(t, "7.1.1.0.6250")
+	fake.stallBeforeLogin = stall
+
+	opt := options{
+		probe: "tcp", sshPort: fake.port,
+		pingTimeout: 200 * time.Millisecond, pingConcurrency: 8, concurrency: 4,
+		watchEnabled: true, watchInterval: interval,
+	}
+	cfg := ap.Config{
+		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
+		Port:           fake.port,
+		ConnectTimeout: 3 * time.Second, DialogTimeout: 3 * time.Second, Deadline: 20 * time.Second,
+	}
+	results := []ap.Result{{IP: "127.0.0.1", Status: "Done", Reachable: true, Firmware: "7.1.1.0.6250"}}
+
+	var mu sync.Mutex
+	var starts, ends []time.Time
+	emit := func(e Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case e.Kind == EvPhase && e.Phase == "rescan":
+			starts = append(starts, time.Now())
+		case e.Kind == EvProgress && e.Phase == "watch":
+			ends = append(ends, time.Now())
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { watchAPs(ctx, opt, cfg, results, emit); close(done) }()
+
+	waitFor(t, 15*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(ends) >= 2 && len(starts) >= 3
+	}, "not enough passes completed to measure the spacing")
+	cancel()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Every pass after the first must begin at least an interval after the
+	// previous one ended, allowing a little slack for scheduling.
+	const slack = 60 * time.Millisecond
+	for i := 0; i < len(ends) && i+1 < len(starts); i++ {
+		gap := starts[i+1].Sub(ends[i])
+		if gap < interval-slack {
+			t.Errorf("pass %d started %v after the previous ended, want at least %v",
+				i+2, gap.Round(time.Millisecond), interval)
+		}
+	}
+
+	// And a pass really did overrun the interval, or the test proves nothing.
+	if len(ends) > 0 && ends[0].Sub(starts[0]) <= interval {
+		t.Fatalf("a pass took %v, which is not longer than the %v interval; the test is not exercising the overrun",
+			ends[0].Sub(starts[0]).Round(time.Millisecond), interval)
 	}
 }

@@ -64,8 +64,12 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		look.Deadline = d
 	}
 
-	tick := time.NewTicker(opt.watchInterval)
-	defer tick.Stop()
+	// A timer, not a ticker: the interval is the rest between passes, measured
+	// from when one ends. A ticker keeps firing during a long pass and leaves a
+	// tick queued, so the next pass would start the instant the last finished -
+	// which on a large estate means scanning continuously.
+	timer := time.NewTimer(opt.watchInterval)
+	defer timer.Stop()
 
 	// An optional cap, for the command line; the console leaves it unset and
 	// stops on demand instead.
@@ -83,9 +87,10 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		case <-deadline:
 			emit(Event{Kind: EvLog, Message: fmt.Sprintf("Stopped watching after %s.", opt.watch)})
 			return updates
-		case <-tick.C:
+		case <-timer.C:
 		}
 		pass++
+		passStart := time.Now()
 		// Say the pass has started before doing any of it. A pass over several
 		// hundred APs takes tens of seconds, and reporting only at the end made
 		// a working re-scan look like nothing was happening at all.
@@ -199,8 +204,25 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		// Ends the pass: the console uses this to clear the "re-scanning" marks
 		// from any row that did not report back.
 		emit(Event{Kind: EvProgress, Phase: "watch", Done: upgraded, Total: len(order)})
+		took := time.Since(passStart).Round(time.Second)
 		emit(Event{Kind: EvLog, Message: fmt.Sprintf(
-			"Re-scan %d done: %d up, %d not answering, %d on new firmware.", pass, len(order)-down, down, upgraded)})
+			"Re-scan %d done in %s: %d up, %d not answering, %d on new firmware. Next in %s.",
+			pass, took, len(order)-down, down, upgraded, opt.watchInterval)})
+		if took > opt.watchInterval {
+			emit(Event{Kind: EvLog, Message: fmt.Sprintf(
+				"  (that pass took longer than the %s interval; the interval is counted from the end of a pass, so passes never overlap)",
+				opt.watchInterval)})
+		}
+
+		// Rest, then go again. Draining first keeps a tick that arrived while
+		// the pass was running from collapsing the gap to nothing.
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(opt.watchInterval)
 	}
 }
 
