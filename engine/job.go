@@ -19,9 +19,10 @@ type Event struct {
 	Message string `json:"message,omitempty"`
 	Phase   string `json:"phase,omitempty"`
 
-	// Counters, for progress.
-	Done  int `json:"done,omitempty"`
-	Total int `json:"total,omitempty"`
+	// Counters, for progress. Not omitempty: "0 of 40 downloaded" is a real
+	// state, and omitting the zero makes it arrive in the browser as undefined.
+	Done  int `json:"done"`
+	Total int `json:"total"`
 
 	Result *ap.Result `json:"result,omitempty"`
 	// Transcript rides alongside Result because ap.Result deliberately keeps it
@@ -226,7 +227,9 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 		}
 	}
 
-	if opt.watch > 0 {
+	// Re-scan until stopped. The first pass above did whatever was asked; from
+	// here it only looks.
+	if opt.watchEnabled {
 		for ip, u := range watchAPs(ctx, opt, cfg, results, emit) {
 			for i := range results {
 				if results[i].IP == ip {

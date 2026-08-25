@@ -171,7 +171,7 @@ func TestWatchFollowsARebootAndUpgrade(t *testing.T) {
 		// point here is to model an AP that has gone away.
 		probe: "tcp", sshPort: fake.port,
 		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8,
-		concurrency: 4, watch: 20 * time.Second, watchInterval: 300 * time.Millisecond,
+		concurrency: 4, watchEnabled: true, watchInterval: 300 * time.Millisecond,
 	}
 	cfg := ap.Config{
 		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
@@ -221,6 +221,8 @@ func TestWatchFollowsARebootAndUpgrade(t *testing.T) {
 	waitFor(t, 10*time.Second, func() bool { return sawNote("Upgraded from 7.1.1.0.6250") },
 		"the new firmware version was never recognised as an upgrade")
 
+	// It keeps scanning until stopped, so stopping is what ends it.
+	cancel()
 	select {
 	case updates := <-done:
 		u := updates["127.0.0.1"]
@@ -231,12 +233,12 @@ func TestWatchFollowsARebootAndUpgrade(t *testing.T) {
 			t.Errorf("final note = %q", u.Note)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("watch did not finish once every AP had settled")
+		t.Fatal("watch did not stop when the context was cancelled")
 	}
 }
 
-// An AP that never changes version must not be declared upgraded, and watching
-// must end on its own deadline rather than hanging.
+// An AP that never changes version must not be declared upgraded, and the
+// optional cap must end the loop rather than leaving it running.
 func TestWatchStopsAtItsDeadlineWithoutAnUpgrade(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
@@ -246,7 +248,7 @@ func TestWatchStopsAtItsDeadlineWithoutAnUpgrade(t *testing.T) {
 	opt := options{
 		probe: "tcp", sshPort: fake.port,
 		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8,
-		concurrency: 4, watch: 1200 * time.Millisecond, watchInterval: 300 * time.Millisecond,
+		concurrency: 4, watchEnabled: true, watch: 1200 * time.Millisecond, watchInterval: 300 * time.Millisecond,
 	}
 	cfg := ap.Config{
 		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
@@ -265,15 +267,34 @@ func TestWatchStopsAtItsDeadlineWithoutAnUpgrade(t *testing.T) {
 	}
 }
 
-// Only APs we actually reached are worth following.
-func TestWatchIgnoresAPsItNeverReached(t *testing.T) {
-	opt := options{watch: time.Second, watchInterval: 100 * time.Millisecond}
-	updates := watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
+// An address that never answered has nothing to re-scan. One that answered but
+// refused the login is still worth pinging — it can still go away and come
+// back — so it stays in the loop even though its version cannot be re-read.
+func TestWatchSkipsAddressesThatNeverAnswered(t *testing.T) {
+	opt := options{watchEnabled: true, watch: 400 * time.Millisecond, watchInterval: 100 * time.Millisecond,
+		probe: "tcp", sshPort: "1", pingTimeout: 100 * time.Millisecond, pingConcurrency: 4, concurrency: 2}
+
+	// Nothing reachable at all: the loop must not even start.
+	watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
 		{IP: "10.0.0.1", Status: "No ping reply"},
+	}, func(Event) { t.Error("an address that never answered should not be watched") })
+
+	// One that answered but could not be logged into is still followed.
+	var mu sync.Mutex
+	sawPhase := false
+	watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
 		{IP: "10.0.0.2", Status: "Login Failed", Reachable: true},
-	}, func(Event) { t.Error("nothing should have been watched") })
-	if len(updates) != 0 {
-		t.Errorf("updates = %v", updates)
+	}, func(e Event) {
+		if e.Kind == EvPhase {
+			mu.Lock()
+			sawPhase = true
+			mu.Unlock()
+		}
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if !sawPhase {
+		t.Error("an AP that answered the first sweep should still be re-scanned")
 	}
 }
 
@@ -287,4 +308,50 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool, msg string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal(msg)
+}
+
+// Watching now applies to any run: the first pass does whatever was asked and
+// every pass after that only scans, so an inventory-only run is re-scanned too.
+func TestWatchReScansEvenAnInventoryOnlyRun(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	fake := newRestartableAP(t, "7.1.1.0.6250")
+	opt := options{
+		probe: "tcp", sshPort: fake.port,
+		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8,
+		concurrency: 4, watchEnabled: true, watchInterval: 200 * time.Millisecond,
+	}
+	cfg := ap.Config{
+		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
+		Port:           fake.port,
+		ConnectTimeout: 2 * time.Second, DialogTimeout: 2 * time.Second, Deadline: 20 * time.Second,
+	}
+	results := []ap.Result{{IP: "127.0.0.1", Status: "Done", Reachable: true, Firmware: "7.1.1.0.6250"}}
+
+	var mu sync.Mutex
+	passes := 0
+	emit := func(e Event) {
+		if e.Kind == EvProgress && e.Phase == "watch" {
+			mu.Lock()
+			passes++
+			mu.Unlock()
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { watchAPs(ctx, opt, cfg, results, emit); close(done) }()
+
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return passes >= 3
+	}, "an inventory-only run was not re-scanned")
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch ignored Stop")
+	}
 }

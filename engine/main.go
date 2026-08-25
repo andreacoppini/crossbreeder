@@ -62,7 +62,8 @@ type options struct {
 	uiPort    int
 	showVers  bool
 
-	watch         time.Duration
+	watchEnabled  bool
+	watch         time.Duration // optional cap; 0 means until stopped
 	watchInterval time.Duration
 
 	probe           string

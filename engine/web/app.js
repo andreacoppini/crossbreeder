@@ -15,7 +15,8 @@ let running = false;
 // The form is seeded from the flags the process was started with, so the
 // console and the command line agree on what "default" means.
 const FIELDS = ['user', 'concurrency', 'probe', 'pingTimeoutMs', 'pingRetries', 'pingConcurrency',
-  'sshPort', 'timeoutS', 'legacy', 'fwProto', 'fwPort', 'servePort', 'serveWaitS', 'serveDir', 'watchIntervalS'];
+  'sshPort', 'timeoutS', 'legacy', 'fwProto', 'fwPort', 'servePort', 'serveWaitS', 'serveDir',
+  'watchIntervalS'];
 
 async function loadDefaults() {
   const d = await (await fetch('/api/defaults')).json();
@@ -30,7 +31,7 @@ async function loadDefaults() {
 
 // Everything except the passwords is remembered between sessions.
 const SAVE = [...FIELDS, 'alsoDefault', 'firmware', 'factory', 'reboot', 'command',
-  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts', 'watch', 'watchMinutes'];
+  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts', 'watch'];
 
 function persist() {
   const s = {};
@@ -113,6 +114,11 @@ function actionsChanged() {
   el.hidden = d.length === 0;
   el.textContent = d.length ? 'This run changes the APs. You will be asked to confirm.' : '';
   $('watchOpts').hidden = !$('watch').checked;
+  const wh = $('watchHint');
+  wh.className = 'hint';
+  wh.textContent = $('watch').checked
+    ? 'The first pass does the above; after that it keeps pinging and re-reading the version until you press Stop.'
+    : 'The run finishes after one pass.';
   $('fwSection').classList.toggle('collapsed', !$('firmware').checked);
   if ($('firmware').checked && internalMode()) { refreshFirmware(); refreshIPs(); }
   persist();
@@ -515,7 +521,7 @@ function request() {
     fwProto: $('fwProto').value, fwHost: $('fwHost').value, fwPort: $('fwPort').value,
     fwUser: $('fwUser').value, fwPass: $('fwPass').value,
     fwFile: internalMode() ? $('fwFileSel').value : $('fwFile').value,
-    watch: $('watch').checked, watchMinutes: num('watchMinutes'), watchIntervalS: num('watchIntervalS'),
+    watch: $('watch').checked, watchIntervalS: num('watchIntervalS'),
     sshPort: $('sshPort').value, timeoutS: num('timeoutS'), legacy: $('legacy').checked,
     serveWaitS: num('serveWaitS'),
   };
@@ -613,9 +619,10 @@ src.onmessage = (m) => {
       break;
 
     case 'progress':
-      if (e.total) $('bar').style.width = `${(e.done / e.total) * 100}%`;
-      if (e.phase === 'download') $('phase').textContent = `downloaded ${e.done}/${e.total}`;
-      if (e.phase === 'watch') $('phase').textContent = `upgraded ${e.done}/${e.total}`;
+      const done = e.done ?? 0, total = e.total ?? 0;
+      if (total) $('bar').style.width = `${(done / total) * 100}%`;
+      if (e.phase === 'download') $('phase').textContent = `downloaded ${done}/${total}`;
+      if (e.phase === 'watch') $('phase').textContent = `re-scanned ${done}/${total} on new firmware`;
       break;
 
     case 'sweep':

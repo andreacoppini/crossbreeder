@@ -243,23 +243,28 @@ TFTP's lockstep ack-per-block makes it slow and fragile besides. Use
 prints its usage page rather than accepting a blank setting, so `-fw-user` and
 `-fw-pass` are only sent when you supply them.
 
-### Watching for the reboot
+### Re-scanning until you stop it
 
 A firmware push, a factory reset and a reboot all end with the AP going away and
 coming back some minutes later, so the run finishing tells you nothing about
-whether it worked. `-watch 20m` (or the checkbox in the console) keeps following
-the APs afterwards:
+whether it worked.
 
-- every `-watch-interval` (30s by default) it pings the APs it acted on;
-- one that stops answering reads as **Rebooting** rather than failed;
-- one that answers gets its version re-read, and a version different from the
-  one it started with is reported as **Upgraded from &lt;old&gt;**, with the grid's
-  firmware column updated;
-- an AP confirmed upgraded is dropped from the watch list, and the phase ends
-  early once they all are.
+In the console, **Keep re-scanning until I press Stop** is on by default. The
+first pass does whatever was ticked; every pass after that only looks:
 
-It re-reads inventory only. Actions are never re-issued, which matters on an AP
-that is halfway through a reboot.
+- it pings every AP that answered the first sweep — one that stops answering
+  reads as **Rebooting** rather than failed;
+- it re-reads the version on whatever answers, so the firmware column tracks
+  what is actually running;
+- a version different from the one it started with is reported as
+  **Upgraded from &lt;old&gt;**.
+
+It never stops on its own; Stop ends it. Actions are never re-issued, which
+matters on an AP halfway through a reboot.
+
+On the command line the same thing is `-watch`, which runs until interrupted;
+`-watch-for 20m` caps it so a scripted run still terminates. It is off by
+default there, because a command that never returns is no use in a script.
 
 ### Factory resets
 

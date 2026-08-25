@@ -28,20 +28,21 @@ var webAssets embed.FS
 type uiServer struct {
 	opt options
 
-	mu       sync.Mutex
-	subs     map[chan Event]struct{}
-	history  []Event // replayed to a client that connects mid-run
-	running  bool
-	cancel   context.CancelFunc
-	results  []ap.Result
-	dead     []string
-	srv      *fileServer
-	lastCfg  string
-	finished bool
+	mu        sync.Mutex
+	subs      map[chan Event]struct{}
+	history   []Event // replayed to a client that connects mid-run
+	running   bool
+	cancel    context.CancelFunc
+	results   []ap.Result
+	resultIdx map[string]int
+	dead      []string
+	srv       *fileServer
+	lastCfg   string
+	finished  bool
 }
 
 func serveUI(opt options) error {
-	u := &uiServer{opt: opt, subs: map[chan Event]struct{}{}}
+	u := &uiServer{opt: opt, subs: map[chan Event]struct{}{}, resultIdx: map[string]int{}}
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", opt.uiPort))
 	if err != nil {
@@ -80,8 +81,19 @@ func serveUI(opt options) error {
 func (u *uiServer) publish(e Event) {
 	u.mu.Lock()
 	u.history = append(u.history, e)
+	if u.resultIdx == nil {
+		u.resultIdx = map[string]int{}
+	}
 	if e.Kind == EvResult && e.Result != nil {
-		u.results = append(u.results, *e.Result)
+		// Watch re-emits a row on every pass, so results are keyed by address
+		// rather than appended - otherwise an export would carry one line per
+		// scan instead of one per AP.
+		if i, ok := u.resultIdx[e.Result.IP]; ok {
+			u.results[i] = *e.Result
+		} else {
+			u.resultIdx[e.Result.IP] = len(u.results)
+			u.results = append(u.results, *e.Result)
+		}
 	}
 	if e.Kind == EvSweep {
 		u.dead = e.Dead
@@ -195,7 +207,6 @@ type runRequest struct {
 	FwWaitS   int    `json:"fwWaitS"`
 
 	Watch         bool `json:"watch"`
-	WatchMinutes  int  `json:"watchMinutes"`
 	WatchInterval int  `json:"watchIntervalS"`
 
 	SSHPort    string `json:"sshPort"`
@@ -229,6 +240,7 @@ func (u *uiServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	u.finished = false
 	u.history = nil
 	u.results = nil
+	u.resultIdx = map[string]int{}
 	u.dead = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	u.cancel = cancel
@@ -428,9 +440,10 @@ func (o options) merge(r runRequest) options {
 	setDurIfPositive(&out.timeout, time.Duration(r.TimeoutS)*time.Second)
 	setDurIfPositive(&out.serveWait, time.Duration(r.ServeWaitS)*time.Second)
 	setDurIfPositive(&out.fwWait, time.Duration(r.FwWaitS)*time.Second)
+	// The console has a Stop button, so watching there is open-ended.
+	out.watchEnabled = r.Watch
 	out.watch = 0
 	if r.Watch {
-		out.watch = time.Duration(max(1, r.WatchMinutes)) * time.Minute
 		setDurIfPositive(&out.watchInterval, time.Duration(r.WatchInterval)*time.Second)
 	}
 	return out

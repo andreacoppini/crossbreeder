@@ -11,33 +11,38 @@ import (
 // Watch states, shown in the console's detail column.
 const (
 	NoteRebooting = "Rebooting"
-	NoteBackUp    = "Back online, firmware unchanged"
+	NoteBackUp    = "Back online"
 )
 
-// watchTarget is one AP being followed after the actions were issued.
+// watchTarget is one AP being re-scanned after the first pass.
 type watchTarget struct {
-	ip       string
-	baseline string // the firmware version it had before we touched it
-	wentDown bool   // it stopped answering at some point, so a reboot happened
-	settled  bool   // confirmed upgraded; nothing left to watch
+	ip        string
+	baseline  string // the firmware version it had on the first pass
+	inventory bool   // we got into it once, so re-reading the version is worth trying
+	wentDown  bool   // it stopped answering at some point
+	upgraded  bool   // it has since come back on a different version
 }
 
-// watchAPs follows the APs we acted on until they come back with new firmware.
+// watchAPs keeps re-scanning the APs after the actions have been issued, until
+// the run is stopped.
 //
-// A firmware push only ever *starts* something: the AP downloads in the
-// background, reboots, and comes back some minutes later. Without this the run
-// ends at "In progress" and the operator is left refreshing by hand. Pinging is
-// what makes an AP that has dropped off distinguishable from one that failed,
-// and re-reading the version is the only thing that actually proves an upgrade.
+// The first pass does whatever was asked - firmware, factory, reboot, a command.
+// Every pass after that only looks: it pings, and re-reads the version on
+// whatever answers. That is what turns "fw update: In progress" into a table
+// that eventually says the new version is running, and it is why an AP that has
+// dropped off reads as rebooting rather than failed.
+//
+// It runs until the context is cancelled, which is the Stop button.
 func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Result, emit Emitter) map[string]ap.Result {
 	targets := map[string]*watchTarget{}
 	var order []string
 	for _, r := range results {
-		// Only APs we actually reached and acted on are worth following.
-		if r.Status != "Done" || !r.Reachable {
+		// Anything that answered the first sweep is worth re-scanning; only the
+		// ones we actually logged into are worth re-inventorying.
+		if !r.Reachable {
 			continue
 		}
-		targets[r.IP] = &watchTarget{ip: r.IP, baseline: r.Firmware}
+		targets[r.IP] = &watchTarget{ip: r.IP, baseline: r.Firmware, inventory: r.Status == "Done"}
 		order = append(order, r.IP)
 	}
 	updates := map[string]ap.Result{}
@@ -47,109 +52,108 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 
 	emit(Event{Kind: EvPhase, Phase: "watch", Total: len(order)})
 	emit(Event{Kind: EvLog, Message: fmt.Sprintf(
-		"Watching %d AP(s) for up to %s, checking every %s", len(order), opt.watch, opt.watchInterval)})
+		"Re-scanning %d AP(s) every %s. Press Stop to finish.", len(order), opt.watchInterval)})
 
-	// Inventory only: the actions were already issued, and re-issuing them on
-	// an AP mid-reboot is the last thing anyone wants.
+	// Inventory only from here. Re-issuing actions against an AP that is
+	// halfway through a reboot is the last thing anyone wants.
 	look := cfg
 	look.Actions = ap.Actions{}
 
-	deadline := time.After(opt.watch)
 	tick := time.NewTicker(opt.watchInterval)
 	defer tick.Stop()
 
+	// An optional cap, for the command line; the console leaves it unset and
+	// stops on demand instead.
+	var deadline <-chan time.Time
+	if opt.watch > 0 {
+		deadline = time.After(opt.watch)
+	}
+
+	pass := 0
 	for {
 		select {
 		case <-ctx.Done():
-			emit(Event{Kind: EvLog, Message: "Stopped watching."})
+			emit(Event{Kind: EvLog, Message: fmt.Sprintf("Stopped after %d re-scan(s).", pass)})
 			return updates
 		case <-deadline:
 			emit(Event{Kind: EvLog, Message: fmt.Sprintf("Stopped watching after %s.", opt.watch)})
 			return updates
 		case <-tick.C:
 		}
+		pass++
 
-		pending := pendingTargets(targets, order)
-		if len(pending) == 0 {
-			emit(Event{Kind: EvLog, Message: "Every watched AP came back with new firmware."})
-			return updates
-		}
-
-		// Ping first: it is cheap, and an AP that does not answer is mid-reboot
-		// rather than broken.
-		sweep := ap.Sweep(ctx, pending, ap.SweepOptions{
+		sweep := ap.Sweep(ctx, order, ap.SweepOptions{
 			Mode:        ap.ProbeMode(opt.probe),
 			Timeout:     opt.pingTimeout,
 			Retries:     0, // a single miss is exactly what we are looking for
 			Concurrency: opt.pingConcurrency,
 			SSHPort:     opt.sshPort,
 		})
-
-		var up []string
-		for _, ip := range pending {
-			t := targets[ip]
-			if sweep[ip].Alive {
-				up = append(up, ip)
-				continue
-			}
-			t.wentDown = true
-			if u := setNote(updates, results, ip, NoteRebooting); u != nil {
-				emit(Event{Kind: EvResult, Result: u})
-			}
-		}
-		if len(up) == 0 {
+		if ctx.Err() != nil {
 			continue
 		}
 
-		// Re-read the version on whatever is answering.
-		rn := &Runner{Concurrency: opt.concurrency, Config: look}
-		for _, r := range rn.Run(ctx, up) {
-			t := targets[r.IP]
-			if t == nil || r.Status != "Done" || r.Firmware == "" {
+		var up []string
+		down := 0
+		for _, ip := range order {
+			t := targets[ip]
+			if sweep[ip].Alive {
+				if t.inventory {
+					up = append(up, ip)
+				}
 				continue
 			}
-			cur := updates[r.IP]
-			if cur.IP == "" {
-				cur = findResult(results, r.IP)
+			down++
+			t.wentDown = true
+			if u := noteChange(updates, results, ip, NoteRebooting); u != nil {
+				emit(Event{Kind: EvResult, Result: u})
 			}
-			cur.MAC, cur.Model, cur.Kind = r.MAC, r.Model, r.Kind
-			cur.Firmware = r.Firmware
-
-			switch {
-			case r.Firmware != t.baseline:
-				t.settled = true
-				cur.Note = fmt.Sprintf("Upgraded from %s", t.baseline)
-			case t.wentDown:
-				cur.Note = NoteBackUp
-			default:
-				cur.Note = ""
-			}
-			updates[r.IP] = cur
-			c := cur
-			emit(Event{Kind: EvResult, Result: &c})
 		}
 
-		done := 0
+		if len(up) > 0 {
+			rn := &Runner{Concurrency: opt.concurrency, Config: look}
+			for _, r := range rn.Run(ctx, up) {
+				t := targets[r.IP]
+				if t == nil || r.Status != "Done" || r.Firmware == "" {
+					continue
+				}
+				cur := current(updates, results, r.IP)
+				cur.MAC, cur.Model, cur.Kind = r.MAC, r.Model, r.Kind
+				cur.Firmware = r.Firmware
+
+				switch {
+				case r.Firmware != t.baseline:
+					t.upgraded = true
+					cur.Note = fmt.Sprintf("Upgraded from %s", t.baseline)
+				case t.upgraded:
+					// Already recorded; leave the note alone.
+				case t.wentDown:
+					cur.Note = NoteBackUp
+				default:
+					cur.Note = ""
+				}
+				updates[r.IP] = cur
+				c := cur
+				emit(Event{Kind: EvResult, Result: &c})
+			}
+		}
+
+		upgraded := 0
 		for _, t := range targets {
-			if t.settled {
-				done++
+			if t.upgraded {
+				upgraded++
 			}
 		}
-		emit(Event{Kind: EvProgress, Phase: "watch", Done: done, Total: len(order)})
+		emit(Event{Kind: EvProgress, Phase: "watch", Done: upgraded, Total: len(order)})
+		emit(Event{Kind: EvLog, Message: fmt.Sprintf(
+			"Re-scan %d: %d up, %d not answering, %d on new firmware.", pass, len(order)-down, down, upgraded)})
 	}
 }
 
-func pendingTargets(targets map[string]*watchTarget, order []string) []string {
-	var out []string
-	for _, ip := range order {
-		if !targets[ip].settled {
-			out = append(out, ip)
-		}
+func current(updates map[string]ap.Result, results []ap.Result, ip string) ap.Result {
+	if cur, ok := updates[ip]; ok {
+		return cur
 	}
-	return out
-}
-
-func findResult(results []ap.Result, ip string) ap.Result {
 	for _, r := range results {
 		if r.IP == ip {
 			return r
@@ -158,13 +162,10 @@ func findResult(results []ap.Result, ip string) ap.Result {
 	return ap.Result{IP: ip}
 }
 
-// setNote records a note against an AP, returning the row to emit only when the
-// note actually changed - otherwise a long reboot would repeat every cycle.
-func setNote(updates map[string]ap.Result, results []ap.Result, ip, note string) *ap.Result {
-	cur, ok := updates[ip]
-	if !ok {
-		cur = findResult(results, ip)
-	}
+// noteChange records a note, returning the row to emit only when the note
+// actually changed — otherwise a long reboot would repeat every pass.
+func noteChange(updates map[string]ap.Result, results []ap.Result, ip, note string) *ap.Result {
+	cur := current(updates, results, ip)
 	if cur.Note == note {
 		return nil
 	}

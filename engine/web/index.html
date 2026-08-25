@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>Crossbreeder</title>
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:,">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" href="icon.png" sizes="256x256">
 </head>
 <body>
 
@@ -57,11 +58,11 @@
       <label class="check"><input type="checkbox" id="factory"> Factory reset</label>
       <label class="check"><input type="checkbox" id="reboot"> Reboot</label>
       <label><span>Run a CLI command</span><input type="text" id="command" placeholder="e.g. set scg ip 10.0.0.5" spellcheck="false"></label>
-      <label class="check"><input type="checkbox" id="watch"> Watch afterwards until they come back upgraded</label>
-      <div class="row" id="watchOpts" hidden>
-        <label><span>For (minutes)</span><input type="number" id="watchMinutes" min="1" value="20"></label>
-        <label><span>Check every (s)</span><input type="number" id="watchIntervalS" min="5"></label>
+      <label class="check"><input type="checkbox" id="watch" checked> Keep re-scanning until I press Stop</label>
+      <div class="row" id="watchOpts">
+        <label><span>Re-scan every (s)</span><input type="number" id="watchIntervalS" min="5"></label>
       </div>
+      <div class="hint" id="watchHint"></div>
       <div class="hint">With nothing ticked it only collects inventory.</div>
       <div class="hint warn" id="destructive" hidden></div>
     </div>

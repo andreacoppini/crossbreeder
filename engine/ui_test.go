@@ -145,25 +145,66 @@ func TestRunRejectsAnEmptyHostList(t *testing.T) {
 	}
 }
 
-// The console form must be able to turn watching on, and leave it off by default.
+// The console form must be able to turn watching on, and leave it off when
+// unticked. The console has a Stop button, so watching there is open-ended
+// rather than capped.
 func TestMergeAppliesWatchSettings(t *testing.T) {
 	base := options{watchInterval: 30 * time.Second}
 
-	if got := base.merge(runRequest{}); got.watch != 0 {
-		t.Errorf("watch = %v with the box unticked", got.watch)
+	if got := base.merge(runRequest{}); got.watchEnabled {
+		t.Error("watching enabled with the box unticked")
 	}
 
-	got := base.merge(runRequest{Watch: true, WatchMinutes: 20, WatchInterval: 45})
-	if got.watch != 20*time.Minute {
-		t.Errorf("watch = %v, want 20m", got.watch)
+	got := base.merge(runRequest{Watch: true, WatchInterval: 45})
+	if !got.watchEnabled {
+		t.Error("watching not enabled with the box ticked")
 	}
 	if got.watchInterval != 45*time.Second {
 		t.Errorf("interval = %v, want 45s", got.watchInterval)
 	}
+	if got.watch != 0 {
+		t.Errorf("watch cap = %v; the console stops on demand, not on a timer", got.watch)
+	}
 
-	// A blank minutes box must not mean "watch for zero time", which would
-	// silently do nothing.
-	if got := base.merge(runRequest{Watch: true}); got.watch <= 0 {
-		t.Errorf("watch = %v with no duration given", got.watch)
+	// A blank interval must fall back to the process default, not to zero.
+	if got := base.merge(runRequest{Watch: true}); got.watchInterval != 30*time.Second {
+		t.Errorf("interval = %v, want the default", got.watchInterval)
+	}
+}
+
+// A zero counter is a real state — "0 of 40 downloaded" — so it must survive
+// JSON. omitempty here made it arrive in the browser as undefined.
+func TestProgressCountersSurviveZero(t *testing.T) {
+	b, err := json.Marshal(Event{Kind: EvProgress, Phase: "download", Done: 0, Total: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["done"]; !ok {
+		t.Errorf("done was dropped from %s", b)
+	}
+	if got["total"] != float64(1) {
+		t.Errorf("total = %v", got["total"])
+	}
+}
+
+// Watch re-emits a row per pass; the exported table must stay one line per AP.
+func TestRepeatedResultsDoNotDuplicateRows(t *testing.T) {
+	u := &uiServer{subs: map[chan Event]struct{}{}, resultIdx: map[string]int{}}
+	u.publish(Event{Kind: EvResult, Result: &ap.Result{IP: "10.0.0.1", Status: "Done", Firmware: "7.1"}})
+	u.publish(Event{Kind: EvResult, Result: &ap.Result{IP: "10.0.0.2", Status: "Done", Firmware: "7.1"}})
+	// three re-scans of the first AP, the last one carrying the upgrade
+	u.publish(Event{Kind: EvResult, Result: &ap.Result{IP: "10.0.0.1", Status: "Done", Firmware: "7.1"}})
+	u.publish(Event{Kind: EvResult, Result: &ap.Result{IP: "10.0.0.1", Status: "Done", Note: NoteRebooting}})
+	u.publish(Event{Kind: EvResult, Result: &ap.Result{IP: "10.0.0.1", Status: "Done", Firmware: "7.2", Note: "Upgraded from 7.1"}})
+
+	if len(u.results) != 2 {
+		t.Fatalf("%d rows after 5 events, want 2:\n%+v", len(u.results), u.results)
+	}
+	if u.results[0].Firmware != "7.2" || u.results[0].Note != "Upgraded from 7.1" {
+		t.Errorf("the row kept a stale version: %+v", u.results[0])
 	}
 }
