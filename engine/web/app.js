@@ -206,9 +206,10 @@ async function refreshFirmware() {
       return;
     }
     sel.value = (r.candidates || []).includes(chosen) ? chosen : r.picked;
-    hint.className = 'hint';
-    hint.textContent = sel.value === r.picked
-      ? `Picked automatically: ${r.reason}.` : 'Chosen manually.';
+    const auto = sel.value === r.picked;
+    const warn = /\.rcks$/i.test(sel.value) ? '' : (r.warn || '');
+    hint.className = warn ? 'hint warn' : 'hint';
+    hint.textContent = (auto ? `Picked automatically: ${r.reason}. ` : 'Chosen manually. ') + warn;
   } catch (e) {
     hint.className = 'hint warn';
     hint.textContent = 'Could not read that folder.';

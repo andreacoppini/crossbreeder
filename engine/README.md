@@ -252,14 +252,18 @@ whether it worked.
 In the console, **Keep re-scanning until I press Stop** is on by default. The
 first pass does whatever was ticked; every pass after that only looks:
 
-- it pings every AP that answered the first sweep — one that stops answering
-  reads as **Rebooting** rather than failed;
+- it pings every address on the list — one that was up and stops answering reads
+  as **Rebooting** rather than failed, and one that was down and starts
+  answering joins the table;
 - it re-reads the version on whatever answers, so the firmware column tracks
   what is actually running;
 - a version different from the one it started with is reported as
   **Upgraded from &lt;old&gt;**.
 
-It never stops on its own; Stop ends it. Actions are never re-issued, which
+It never stops on its own; Stop ends it. When a firmware push is in flight the
+image server stays up alongside it and downloads are reported in the Transfers
+pane and the server panel, so an AP that never finishes a download cannot hold
+the run up. Actions are never re-issued, which
 matters on an AP halfway through a reboot.
 
 On the command line the same thing is `-watch`, which runs until interrupted;

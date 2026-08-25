@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -267,34 +269,107 @@ func TestWatchStopsAtItsDeadlineWithoutAnUpgrade(t *testing.T) {
 	}
 }
 
-// An address that never answered has nothing to re-scan. One that answered but
-// refused the login is still worth pinging — it can still go away and come
-// back — so it stays in the loop even though its version cannot be re-read.
-func TestWatchSkipsAddressesThatNeverAnswered(t *testing.T) {
-	opt := options{watchEnabled: true, watch: 400 * time.Millisecond, watchInterval: 100 * time.Millisecond,
-		probe: "tcp", sshPort: "1", pingTimeout: 100 * time.Millisecond, pingConcurrency: 4, concurrency: 2}
+// Every listed address is re-scanned, so an AP that was already rebooting when
+// Run was pressed still gets picked up. But "Rebooting" is only for an AP that
+// was up when the run started — an address that never answered keeps whatever
+// the first sweep said about it.
+func TestOnlyAPsThatWereUpAreCalledRebooting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	opt := options{
+		watchEnabled: true, watch: 900 * time.Millisecond, watchInterval: 200 * time.Millisecond,
+		probe: "tcp", sshPort: "1", // nothing is listening, so everything reads as down
+		pingTimeout: 100 * time.Millisecond, pingConcurrency: 4, concurrency: 2,
+	}
 
-	// Nothing reachable at all: the loop must not even start.
-	watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
-		{IP: "10.0.0.1", Status: "No ping reply"},
-	}, func(Event) { t.Error("an address that never answered should not be watched") })
-
-	// One that answered but could not be logged into is still followed.
 	var mu sync.Mutex
-	sawPhase := false
-	watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
-		{IP: "10.0.0.2", Status: "Login Failed", Reachable: true},
-	}, func(e Event) {
-		if e.Kind == EvPhase {
+	notes := map[string]string{}
+	emit := func(e Event) {
+		if e.Kind == EvResult && e.Result != nil {
 			mu.Lock()
-			sawPhase = true
+			notes[e.Result.IP] = e.Result.Note
 			mu.Unlock()
 		}
-	})
+	}
+
+	watchAPs(context.Background(), opt, ap.Config{}, []ap.Result{
+		{IP: "127.0.0.1", Status: "Done", Reachable: true, Firmware: "7.1"},
+		{IP: "127.0.0.2", Status: "No ping reply"},
+	}, emit)
+
 	mu.Lock()
 	defer mu.Unlock()
-	if !sawPhase {
-		t.Error("an AP that answered the first sweep should still be re-scanned")
+	if notes["127.0.0.1"] != NoteRebooting {
+		t.Errorf("an AP that was up and went away should read as %q, got %q", NoteRebooting, notes["127.0.0.1"])
+	}
+	if n, ok := notes["127.0.0.2"]; ok && n == NoteRebooting {
+		t.Error("an address that never answered was called Rebooting")
+	}
+}
+
+// The reported failure: with an image server up and an AP that never finishes
+// downloading, the run used to sit in the download wait — for the full
+// -serve-wait, 30 minutes by default — and the re-scan never started.
+func TestReScanRunsWhileDownloadsAreStillOutstanding(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	fake := newRestartableAP(t, "7.1.1.0.6250")
+
+	dir := t.TempDir()
+	big := make([]byte, 4<<20)
+	if err := os.WriteFile(filepath.Join(dir, "fw.bl7"), big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opt := options{
+		probe: "tcp", sshPort: fake.port,
+		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8, concurrency: 4,
+		watchEnabled: true, watchInterval: 300 * time.Millisecond,
+		// Long enough that a blocking download wait would obviously hang the test.
+		serveWait: 10 * time.Minute,
+		serveDir:  dir, serveIP: "127.0.0.1", fw: true,
+	}
+	cfg := ap.Config{
+		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
+		Port:           fake.port,
+		Actions:        ap.Actions{UpdateFirmware: true},
+		Firmware:       ap.Firmware{Filename: "fw.bl7"},
+		ConnectTimeout: 2 * time.Second, DialogTimeout: 2 * time.Second, Deadline: 20 * time.Second,
+	}
+
+	var mu sync.Mutex
+	scans := 0
+	emit := func(e Event) {
+		if e.Kind == EvProgress && e.Phase == "watch" {
+			mu.Lock()
+			scans++
+			mu.Unlock()
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_, _ = runJob(ctx, opt, []string{"127.0.0.1"}, cfg, emit, nil)
+		close(done)
+	}()
+
+	// No AP ever fetches the image, so nothing completes. The re-scan must run
+	// regardless.
+	waitFor(t, 8*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return scans >= 3
+	}, "the re-scan never started while a download was outstanding")
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run ignored Stop")
 	}
 }
 
@@ -308,50 +383,4 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool, msg string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal(msg)
-}
-
-// Watching now applies to any run: the first pass does whatever was asked and
-// every pass after that only scans, so an inventory-only run is re-scanned too.
-func TestWatchReScansEvenAnInventoryOnlyRun(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing test")
-	}
-	fake := newRestartableAP(t, "7.1.1.0.6250")
-	opt := options{
-		probe: "tcp", sshPort: fake.port,
-		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8,
-		concurrency: 4, watchEnabled: true, watchInterval: 200 * time.Millisecond,
-	}
-	cfg := ap.Config{
-		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
-		Port:           fake.port,
-		ConnectTimeout: 2 * time.Second, DialogTimeout: 2 * time.Second, Deadline: 20 * time.Second,
-	}
-	results := []ap.Result{{IP: "127.0.0.1", Status: "Done", Reachable: true, Firmware: "7.1.1.0.6250"}}
-
-	var mu sync.Mutex
-	passes := 0
-	emit := func(e Event) {
-		if e.Kind == EvProgress && e.Phase == "watch" {
-			mu.Lock()
-			passes++
-			mu.Unlock()
-		}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { watchAPs(ctx, opt, cfg, results, emit); close(done) }()
-
-	waitFor(t, 5*time.Second, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return passes >= 3
-	}, "an inventory-only run was not re-scanned")
-
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("watch ignored Stop")
-	}
 }

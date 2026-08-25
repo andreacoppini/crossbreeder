@@ -16,11 +16,11 @@ const (
 
 // watchTarget is one AP being re-scanned after the first pass.
 type watchTarget struct {
-	ip        string
-	baseline  string // the firmware version it had on the first pass
-	inventory bool   // we got into it once, so re-reading the version is worth trying
-	wentDown  bool   // it stopped answering at some point
-	upgraded  bool   // it has since come back on a different version
+	ip       string
+	baseline string // the firmware version it had on the first pass
+	wasUp    bool   // it answered the first sweep, so dropping off means rebooting
+	wentDown bool   // it stopped answering at some point
+	upgraded bool   // it has since come back on a different version
 }
 
 // watchAPs keeps re-scanning the APs after the actions have been issued, until
@@ -34,15 +34,13 @@ type watchTarget struct {
 //
 // It runs until the context is cancelled, which is the Stop button.
 func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Result, emit Emitter) map[string]ap.Result {
+	// Every listed address is re-scanned, not just the ones that answered the
+	// first sweep: an AP that was already rebooting when Run was pressed would
+	// otherwise never be picked up, and a ping costs almost nothing.
 	targets := map[string]*watchTarget{}
 	var order []string
 	for _, r := range results {
-		// Anything that answered the first sweep is worth re-scanning; only the
-		// ones we actually logged into are worth re-inventorying.
-		if !r.Reachable {
-			continue
-		}
-		targets[r.IP] = &watchTarget{ip: r.IP, baseline: r.Firmware, inventory: r.Status == "Done"}
+		targets[r.IP] = &watchTarget{ip: r.IP, baseline: r.Firmware, wasUp: r.Reachable}
 		order = append(order, r.IP)
 	}
 	updates := map[string]ap.Result{}
@@ -98,12 +96,15 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		for _, ip := range order {
 			t := targets[ip]
 			if sweep[ip].Alive {
-				if t.inventory {
-					up = append(up, ip)
-				}
+				up = append(up, ip)
 				continue
 			}
 			down++
+			// Only an AP that was up when the run started is rebooting. One that
+			// was never there keeps whatever the first sweep said about it.
+			if !t.wasUp {
+				continue
+			}
 			t.wentDown = true
 			if u := noteChange(updates, results, ip, NoteRebooting); u != nil {
 				emit(Event{Kind: EvResult, Result: u})
@@ -120,6 +121,12 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 				cur := current(updates, results, r.IP)
 				cur.MAC, cur.Model, cur.Kind = r.MAC, r.Model, r.Kind
 				cur.Firmware = r.Firmware
+				// An address that was dead at the start and is answering now
+				// joins the table properly rather than staying "No ping reply".
+				cur.Reachable, cur.Status = true, "Done"
+				if !t.wasUp && t.baseline == "" {
+					t.baseline, t.wasUp = r.Firmware, true
+				}
 
 				switch {
 				case r.Firmware != t.baseline:

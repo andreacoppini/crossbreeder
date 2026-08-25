@@ -140,3 +140,27 @@ func TestFirmwareInReportsWhatWouldBeSent(t *testing.T) {
 		t.Error("an empty folder should say so")
 	}
 }
+
+// "fw set control" names the control file. An image on its own is accepted but
+// has to be called out, because the AP reads the .rcks to decide what to fetch.
+func TestFirmwareInWarnsAboutABareImage(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "r550_118.2.0.0.875.bl7"), []byte("x"), 0o600)
+
+	c := firmwareIn(dir)
+	if c.Picked != "r550_118.2.0.0.875.bl7" {
+		t.Fatalf("picked %q", c.Picked)
+	}
+	if c.Warn == "" {
+		t.Error("a bare image was offered with no warning that it is not a control file")
+	}
+	if !strings.Contains(c.Warn, ".rcks") {
+		t.Errorf("the warning should name the control file: %q", c.Warn)
+	}
+
+	// With the control file present there is nothing to warn about.
+	os.WriteFile(filepath.Join(dir, "118.2.0.0.875.rcks"), []byte("x"), 0o600)
+	if c := firmwareIn(dir); c.Warn != "" || !strings.HasSuffix(c.Picked, ".rcks") {
+		t.Errorf("with a .rcks present: picked=%q warn=%q", c.Picked, c.Warn)
+	}
+}

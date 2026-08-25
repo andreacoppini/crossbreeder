@@ -90,6 +90,7 @@ type firmwareChoice struct {
 	Picked     string   `json:"picked"`
 	Candidates []string `json:"candidates"`
 	Reason     string   `json:"reason"`
+	Warn       string   `json:"warn,omitempty"`
 	Err        string   `json:"error,omitempty"`
 }
 
@@ -134,6 +135,10 @@ func firmwareIn(dir string) firmwareChoice {
 		out.Reason = "the only control file in this folder"
 	} else {
 		out.Reason = "the only image in this folder"
+		// "fw set control" names the control file, not the image: the AP reads
+		// the .rcks and works out which .bl7 it needs from it. Handed an image
+		// directly, an AP will fetch it and then stop making sense of it.
+		out.Warn = "This is a firmware image, not a .rcks control file. Ruckus APs read the .rcks to work out which image to fetch, so a push pointed straight at a .bl7 often stalls part-way. Put the matching .rcks in this folder if you have one."
 	}
 	return out
 }

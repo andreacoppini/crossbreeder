@@ -212,24 +212,24 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 	// Follow the APs we changed until they come back on new firmware. This runs
 	// before the download wait only when nothing is being served, since a push
 	// has to finish downloading before there is anything to reboot into.
-	// Hold the server up until the APs that accepted the push have taken the
-	// image; they download long after their SSH session closed.
+	var pushed []string
 	if srv != nil {
-		var pushed []string
 		for _, r := range results {
 			if r.FwStatus != "" && r.Status == "Done" {
 				pushed = append(pushed, r.IP)
 			}
 		}
-		if len(pushed) > 0 {
-			emit(Event{Kind: EvPhase, Phase: "download", Total: len(pushed)})
-			waitForDownloads(ctx, srv, pushed, opt.serveWait, emit)
-		}
 	}
 
-	// Re-scan until stopped. The first pass above did whatever was asked; from
-	// here it only looks.
-	if opt.watchEnabled {
+	switch {
+	case opt.watchEnabled:
+		// The image server stays up for as long as the run does, so downloads
+		// are reported alongside the re-scan rather than blocking it. Waiting
+		// for the downloads first meant an AP that never finished one held the
+		// run in the download phase and the re-scan never started.
+		if len(pushed) > 0 {
+			go streamTransfers(ctx, srv, emit)
+		}
 		for ip, u := range watchAPs(ctx, opt, cfg, results, emit) {
 			for i := range results {
 				if results[i].IP == ip {
@@ -241,9 +241,34 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 				}
 			}
 		}
+
+	case len(pushed) > 0:
+		// Not watching, so the only reason to stay alive is the downloads.
+		emit(Event{Kind: EvPhase, Phase: "download", Total: len(pushed)})
+		waitForDownloads(ctx, srv, pushed, opt.serveWait, emit)
 	}
 
 	return JobResult{Results: results, Dead: dead, Elapsed: time.Since(start)}, nil
+}
+
+// streamTransfers reports what the image server is serving, without waiting for
+// anything. Completion is visible in the server panel; the re-scan is what says
+// whether the upgrade actually landed.
+func streamTransfers(ctx context.Context, srv *fileServer, emit Emitter) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	shown := 0
+	for {
+		for _, line := range srv.Transfers()[shown:] {
+			emit(Event{Kind: EvTransfer, Message: line})
+			shown++
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // waitForDownloads streams the image server's transfer log while the APs fetch.
