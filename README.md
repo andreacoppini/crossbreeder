@@ -1,43 +1,102 @@
-# Crossbreeder #
--------
-## :warning: **THIS IS AN OLD VERSION - GET THE LATEST FROM https://dogtag.tacoppini.com** :warning: ##
--------
--------
-Bulk firmware changing and basic action tool for standalone Ruckus Access Points.
-----------
-> Tool    : Crossbreeder<br>
-> Author  : Andrea Coppini<br>
-> Feedback: Email andrea@tacoppini.com with your feedback.<br>
-----------
-## Description ##
+# Crossbreeder Plus
 
-Crossbreeder is a troubleshooting and automating some simple 
-commonly used tasks for Ruckus APs such as factory reset, update firmware etc.
-It does not rely on any controller.  Instead, it runs through a list of IP
-addresses supplied by the user to contact each AP directly via SSH.
-This utility is built for windows and macOS platforms.
+Bulk firmware changes, inventory and CLI work across standalone Ruckus access
+points — **many at a time** instead of one after another. No controller, no
+installer, no runtime: one binary that talks to each AP directly over SSH.
 
-## Where do I get it? ##
+> Author: Andrea Coppini · Feedback: <andrea@tacoppini.com>
 
-Get it from here!
+Measured against a live 558-AP estate: a full inventory sweep finishes in
+**6.5 seconds**. The original Crossbreeder, working one AP at a time, takes over
+an hour on a list that size.
 
-## How do I install? ##
+![The Crossbreeder Plus console](docs/console.png)
 
-There’s no installer, just unzip and run the exe.
+## Download
 
-## How do I use it? ##
+Grab the file for your platform from the
+[latest release](https://github.com/andreacoppini/crossbreeder/releases/latest):
 
-It should be fairly self-explanatory:
+| Platform | File |
+|---|---|
+| Windows | `crossbreeder-plus-windows-amd64.exe` (`-arm64` for Surface and Snapdragon) |
+| macOS | `crossbreeder-plus-macos.zip` — one universal binary for Intel and Apple Silicon |
+| Linux | `crossbreeder-plus-linux-amd64.tar.gz` (or `-arm64`) |
 
+There is no installer. Unzip it and run it.
 
-1. you feed it a CSV file
-1. you set the AP username/password and/or check the ‘also try default’ to use super/sp-admin on factory default APs. (It will try whatever you set first, for example “admin”/”Ruckus123”, and if that fails it will try “super”/”sp-admin”)
-1. you choose what you want to do with the APs.  It can be any or none of the below:
-	1. Change Firmware; to change the AP firmware. (You need to supply your own HTTP, FTP or TFTP server)
-	1. Reset AP to factory defaults; same as typing "set factory"
-	1. Run a custom command; run any AP CLI command such as ‘set scg ip x.x.x.x’
-	1. Reboot the AP; same as typing "reload"
-1. If you do not check any of the above 4 options, it will just collect information about the APs and display them in the table.
-1. If you wish, you can save the results to a JSON or CSV file.
+The binaries are unsigned, so both Windows and macOS warn on first launch. On
+macOS the first run needs
+`xattr -d com.apple.quarantine crossbreeder-plus-macos-universal`, or
+right-click → Open. `SHA256SUMS.txt` in the release covers every file.
 
-----------
+## Using it
+
+Run it with **no arguments** — or double-click it — and it opens a console in
+your browser, bound to localhost:
+
+```
+Crossbreeder Plus 1.0.0
+Console: http://127.0.0.1:52413
+```
+
+Paste in your addresses (or load a CSV), set the AP credentials, tick what you
+want done, press Run. With nothing ticked it collects inventory.
+
+Everything the console does is also available from the command line, over the
+same engine:
+
+```
+crossbreeder-plus -csv aps.csv -user admin -ask-pass -c 50 -out results.csv
+```
+
+Use `-ask-pass` rather than `-pass`: `cmd.exe` eats `^` as an escape character,
+every shell claims a different set, and an argument is visible in the process
+list. Run `crossbreeder-plus -h` for the rest.
+
+## What it does
+
+- **Pings first.** Most addresses on a site list are dead, and each one costs a
+  single unanswered packet instead of an SSH handshake against a timeout.
+  Addresses that never answer are listed, folded into ranges, and can be written
+  out to re-run later.
+- **Works the APs in parallel** — inventory, firmware, factory reset, reboot, or
+  any AP CLI command, across ZoneFlex and Unleashed, at whatever concurrency the
+  site can take.
+- **Hosts the firmware itself.** A push needs nothing installed beyond this
+  binary: it serves the images, works out which of your addresses the APs can
+  actually reach, and shows what each one is downloading.
+- **Follows the reboot.** After the first pass it keeps pinging and re-reading
+  the version, so an AP that drops off reads as *rebooting* and one that returns
+  on a new version is reported as *upgraded* — the push is confirmed rather than
+  assumed.
+- **Exports CSV and JSON**, with a row for every address including the silent
+  ones.
+
+## Repository layout
+
+| Path | |
+|---|---|
+| `engine/` | Crossbreeder Plus — the Go source, tests and browser console |
+| `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
+| `docs/RELEASE-NOTES.md` | the text published with each release |
+| `.github/workflows/release.yml` | builds and publishes every platform on a tag |
+| `*.xojo_*`, `Crossbreeder-*.zip` | the original Crossbreeder, kept for reference |
+
+Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
+
+## The original Crossbreeder
+
+The Xojo application this replaces is still in this repository, and the last
+builds of it are at **https://dogtag.tacoppini.com**. It remains the reference
+for what the tool is meant to do; Crossbreeder Plus keeps its behaviour,
+including the `super`/`sp-admin` fallback and `%M` model templating in firmware
+filenames.
+
+## Known limits
+
+- The Unleashed dialect and pre-2015 ZoneFlex firmware (`-legacy`) have been
+  exercised against a simulated AP, not real hardware.
+- A firmware push is only ever *started* by the tool. The AP downloads and
+  reboots on its own schedule, which is what the re-scan is there to follow.
+- The binaries are unsigned on both Windows and macOS.
