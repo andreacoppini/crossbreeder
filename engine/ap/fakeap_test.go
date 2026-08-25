@@ -528,3 +528,36 @@ func TestFirmwareUpdateResponseIsCaptured(t *testing.T) {
 		t.Errorf("FwStatus carries the prompt: %q", r.FwStatus)
 	}
 }
+
+// The timing fields are filled in by a deferred function, which only reaches
+// the caller if the return value is named. It was not, so every result came
+// back with a zero duration and no end time.
+func TestResultCarriesItsTiming(t *testing.T) {
+	f := newFakeAP(t, KindZoneFlex, 120*time.Millisecond, false)
+	host, port := f.addr()
+	cfg := testConfig()
+	cfg.Port = port
+
+	before := time.Now()
+	r := Run(t.Context(), host, cfg)
+	after := time.Now()
+
+	if r.Status != "Done" {
+		t.Fatalf("status = %q", r.Status)
+	}
+	if r.Started.IsZero() || r.Ended.IsZero() {
+		t.Fatalf("started = %v, ended = %v", r.Started, r.Ended)
+	}
+	if r.Started.Before(before) || r.Ended.After(after) {
+		t.Errorf("timestamps outside the call: %v .. %v", r.Started, r.Ended)
+	}
+	if r.Ended.Before(r.Started) {
+		t.Errorf("ended before it started")
+	}
+	if r.DurationMS <= 0 {
+		t.Errorf("DurationMS = %d, want the real elapsed time", r.DurationMS)
+	}
+	if r.Duration < 100*time.Millisecond {
+		t.Errorf("Duration = %v, but the AP stalled for 120ms", r.Duration)
+	}
+}

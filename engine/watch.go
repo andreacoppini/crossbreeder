@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/andreacoppini/crossbreeder/engine/ap"
@@ -56,6 +57,12 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 	// halfway through a reboot is the last thing anyone wants.
 	look := cfg
 	look.Actions = ap.Actions{}
+	// A re-read is login plus two commands. The first pass allows for firmware
+	// pushes and reboots; giving a re-scan the same budget lets a handful of
+	// unresponsive APs stretch a pass out to minutes.
+	if d := 6 * cfg.DialogTimeout; d > 0 && d < look.Deadline {
+		look.Deadline = d
+	}
 
 	tick := time.NewTicker(opt.watchInterval)
 	defer tick.Stop()
@@ -79,13 +86,27 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		case <-tick.C:
 		}
 		pass++
+		// Say the pass has started before doing any of it. A pass over several
+		// hundred APs takes tens of seconds, and reporting only at the end made
+		// a working re-scan look like nothing was happening at all.
+		emit(Event{Kind: EvPhase, Phase: "rescan", Done: pass, Total: len(order)})
+		emit(Event{Kind: EvLog, Message: fmt.Sprintf("Re-scan %d: pinging %d address(es)...", pass, len(order))})
 
+		var swept int
+		var smu sync.Mutex
 		sweep := ap.Sweep(ctx, order, ap.SweepOptions{
 			Mode:        ap.ProbeMode(opt.probe),
 			Timeout:     opt.pingTimeout,
 			Retries:     0, // a single miss is exactly what we are looking for
 			Concurrency: opt.pingConcurrency,
 			SSHPort:     opt.sshPort,
+			OnResult: func(string, ap.PingResult) {
+				smu.Lock()
+				swept++
+				n := swept
+				smu.Unlock()
+				emit(Event{Kind: EvProgress, Phase: "rescan-ping", Done: n, Total: len(order)})
+			},
 		})
 		if ctx.Err() != nil {
 			continue
@@ -112,37 +133,61 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 		}
 
 		if len(up) > 0 {
-			rn := &Runner{Concurrency: opt.concurrency, Config: look}
-			for _, r := range rn.Run(ctx, up) {
-				t := targets[r.IP]
-				if t == nil || r.Status != "Done" || r.Firmware == "" {
-					continue
-				}
-				cur := current(updates, results, r.IP)
-				cur.MAC, cur.Model, cur.Kind = r.MAC, r.Model, r.Kind
-				cur.Firmware = r.Firmware
-				// An address that was dead at the start and is answering now
-				// joins the table properly rather than staying "No ping reply".
-				cur.Reachable, cur.Status = true, "Done"
-				if !t.wasUp && t.baseline == "" {
-					t.baseline, t.wasUp = r.Firmware, true
-				}
+			emit(Event{Kind: EvLog, Message: fmt.Sprintf(
+				"Re-scan %d: %d up, %d not answering; re-reading versions...", pass, len(up), down)})
 
-				switch {
-				case r.Firmware != t.baseline:
-					t.upgraded = true
-					cur.Note = fmt.Sprintf("Upgraded from %s", t.baseline)
-				case t.upgraded:
-					// Already recorded; leave the note alone.
-				case t.wentDown:
-					cur.Note = NoteBackUp
-				default:
-					cur.Note = ""
-				}
-				updates[r.IP] = cur
-				c := cur
-				emit(Event{Kind: EvResult, Result: &c})
+			var rmu sync.Mutex
+			seen := 0
+			rn := &Runner{
+				Concurrency: opt.concurrency,
+				Config:      look,
+				// Report each AP as it comes back rather than waiting for the
+				// whole pass: on a few hundred APs that wait is the difference
+				// between a live table and a frozen one.
+				OnResult: func(_ int, r ap.Result) {
+					rmu.Lock()
+					seen++
+					n := seen
+					rmu.Unlock()
+					emit(Event{Kind: EvProgress, Phase: "rescan-read", Done: n, Total: len(up)})
+
+					t := targets[r.IP]
+					if t == nil || r.Status != "Done" || r.Firmware == "" {
+						return
+					}
+					rmu.Lock()
+					defer rmu.Unlock()
+					cur := current(updates, results, r.IP)
+					cur.MAC, cur.Model, cur.Kind = r.MAC, r.Model, r.Kind
+					cur.Firmware = r.Firmware
+					// This pass's own timing, so the transcript block for it is
+					// stamped with when it happened rather than with the first
+					// pass's clock.
+					cur.Started, cur.Ended = r.Started, r.Ended
+					cur.Duration, cur.DurationMS = r.Duration, r.DurationMS
+					// An address that was dead at the start and is answering now
+					// joins the table properly rather than staying unreachable.
+					cur.Reachable, cur.Status = true, "Done"
+					if !t.wasUp && t.baseline == "" {
+						t.baseline, t.wasUp = r.Firmware, true
+					}
+					switch {
+					case r.Firmware != t.baseline:
+						t.upgraded = true
+						cur.Note = fmt.Sprintf("Upgraded from %s", t.baseline)
+					case t.upgraded:
+						// Already recorded; leave the note alone.
+					case t.wentDown:
+						cur.Note = NoteBackUp
+					default:
+						cur.Note = ""
+					}
+					updates[r.IP] = cur
+					c := cur
+					emit(Event{Kind: EvResult, Result: &c, Transcript: r.Transcript})
+				},
 			}
+			rn.Run(ctx, up)
 		}
 
 		upgraded := 0
@@ -151,9 +196,11 @@ func watchAPs(ctx context.Context, opt options, cfg ap.Config, results []ap.Resu
 				upgraded++
 			}
 		}
+		// Ends the pass: the console uses this to clear the "re-scanning" marks
+		// from any row that did not report back.
 		emit(Event{Kind: EvProgress, Phase: "watch", Done: upgraded, Total: len(order)})
 		emit(Event{Kind: EvLog, Message: fmt.Sprintf(
-			"Re-scan %d: %d up, %d not answering, %d on new firmware.", pass, len(order)-down, down, upgraded)})
+			"Re-scan %d done: %d up, %d not answering, %d on new firmware.", pass, len(order)-down, down, upgraded)})
 	}
 }
 

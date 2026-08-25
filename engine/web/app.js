@@ -321,6 +321,36 @@ function statusClass(s) {
 }
 
 const removed = new Set();
+// Addresses currently being re-read. The row dims until its new value lands, so
+// a long pass over hundreds of APs looks like work rather than a frozen table.
+const scanning = new Set();
+// Transcripts accumulate for the whole session: every connection to an AP is
+// appended, so a re-scan adds to the record instead of replacing it. Cleared
+// only when the next run starts.
+const transcripts = new Map();
+
+const clockOf = (iso) => {
+  if (!iso) return '?';
+  const d = new Date(iso);
+  return isNaN(d) ? '?' : d.toLocaleTimeString();
+};
+
+function appendTranscript(ip, text, started, ended) {
+  if (!text) return;
+  const prev = transcripts.get(ip) || '';
+  const head = `${'='.repeat(20)} ${clockOf(started)} \u2192 ${clockOf(ended)} ${'='.repeat(20)}\n`;
+  transcripts.set(ip, prev + (prev ? '\n\n' : '') + head + text.replace(/\s+$/, ''));
+  if (ip === selected) paintTranscript(ip);
+}
+
+function paintTranscript(ip) {
+  const t = transcripts.get(ip);
+  const pane = $('pTx');
+  const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 60;
+  pane.textContent = t || 'No session recorded for this address yet.';
+  $('txWho').textContent = `(${ip})`;
+  if (atBottom) pane.scrollTop = pane.scrollHeight;
+}
 
 function upsert(r) {
   if (removed.has(r.ip)) return;
@@ -388,6 +418,7 @@ function removeSelected() {
   for (const ip of picked) {
     removed.add(ip);
     rows.delete(ip);
+    transcripts.delete(ip);
   }
   order = order.filter((ip) => !picked.has(ip));
   // Take them out of the target list too, so a re-run does not bring them back.
@@ -440,7 +471,8 @@ function render() {
   const frag = document.createDocumentFragment();
   for (const r of list) {
     const tr = document.createElement('tr');
-    tr.className = (picked.has(r.ip) ? 'pick ' : '') + (r.ip === selected ? 'sel' : '');
+    tr.className = (picked.has(r.ip) ? 'pick ' : '') + (scanning.has(r.ip) ? 'scanning ' : '') +
+      (r.ip === selected ? 'sel' : '');
     tr.onclick = (ev) => rowClick(ev, r.ip, ips);
     tr.innerHTML =
       `<td>${esc(r.ip)}</td><td>${esc(r.mac)}</td><td>${esc(r.model)}</td><td>${esc(r.firmware)}</td>` +
@@ -510,10 +542,7 @@ function logLine(pane, text) {
 
 function showTranscript(ip) {
   selected = ip;
-  const r = rows.get(ip);
-  $('txWho').textContent = `(${ip})`;
-  $('pTx').textContent = r && r.transcript ? r.transcript
-    : 'No session recorded for this address.';
+  paintTranscript(ip);
   document.querySelector('.tab[data-p=tx]').click();
   render();
 }
@@ -566,6 +595,8 @@ $('cGo').onclick = () => { $('confirm').hidden = true; start(); };
 async function start() {
   rows.clear(); order = []; selected = null;
   picked.clear(); removed.clear(); anchor = null;
+  // The transcript log spans a whole run and survives Stop; a new run resets it.
+  transcripts.clear();
   // Show every address up front, so the grid is the full worklist from the
   // first second rather than filling in as results trickle back.
   for (const ip of hostList()) {
@@ -573,7 +604,7 @@ async function start() {
       status: 'Queued', fw: '', error: '', transcript: '' });
   }
   for (const p of ['pLog', 'pSweep', 'pXfer']) $(p).replaceChildren();
-  $('pTx').textContent = 'Select an AP to see its session.';
+  $('pTx').textContent = 'Select an AP to see its sessions.';
   $('nDead').textContent = ''; $('nXfer').textContent = '';
   nXfer = 0;
   setCount('cTotal', hostList().length); setCount('cAlive', 0);
@@ -641,6 +672,13 @@ src.onmessage = (m) => {
       break;
 
     case 'phase':
+      if (e.phase === 'rescan') {
+        scanning.clear();
+        for (const ip of order) scanning.add(ip);
+        $('phase').textContent = `re-scan ${e.done} · pinging ${e.total}`;
+        render();
+        break;
+      }
       $('phase').textContent =
         e.phase === 'sweep' ? `probing ${e.total}` :
         e.phase === 'ssh' ? `connecting to ${e.total}` :
@@ -653,7 +691,14 @@ src.onmessage = (m) => {
       const done = e.done ?? 0, total = e.total ?? 0;
       if (total) $('bar').style.width = `${(done / total) * 100}%`;
       if (e.phase === 'download') $('phase').textContent = `downloaded ${done}/${total}`;
-      if (e.phase === 'watch') $('phase').textContent = `re-scanned ${done}/${total} on new firmware`;
+      if (e.phase === 'rescan-ping') $('phase').textContent = `pinging ${done}/${total}`;
+      if (e.phase === 'rescan-read') $('phase').textContent = `re-reading ${done}/${total}`;
+      if (e.phase === 'watch') {
+        // The pass is over; anything still marked never reported back.
+        scanning.clear();
+        $('phase').textContent = `waiting — ${done} of ${total} on new firmware`;
+        render();
+      }
       break;
 
     case 'sweep':
@@ -674,8 +719,9 @@ src.onmessage = (m) => {
         ip: r.ip, mac: r.mac || '', model: r.model || '', firmware: r.firmware || '',
         ping: r.reachable ? (r.ping_ms || 0).toFixed(1) : '', reachable: r.reachable,
         status: r.status, fw: r.fw_status || '', error: r.error || '', note: r.note || '',
-        transcript: e.transcript || '',
       });
+      appendTranscript(r.ip, e.transcript, r.started, r.ended);
+      scanning.delete(r.ip);
       recount();
       if (e.total) $('bar').style.width = `${(e.done / e.total) * 100}%`;
       render();

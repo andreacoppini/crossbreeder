@@ -91,7 +91,11 @@ type Result struct {
 	Error      string        `json:"error,omitempty"`
 	Duration   time.Duration `json:"-"`
 	DurationMS int64         `json:"duration_ms"`
-	Transcript string        `json:"-"`
+	// Started and Ended bracket this one session, so a transcript kept across
+	// several passes can say which connection each block came from.
+	Started    time.Time `json:"started"`
+	Ended      time.Time `json:"ended"`
+	Transcript string    `json:"-"`
 }
 
 // dialect folds the ZoneFlex and Unleashed code paths — which in the Xojo
@@ -139,15 +143,19 @@ var unleashed = dialect{
 
 // Run drives one AP to completion. It never touches shared state, so N of these
 // may be in flight at once.
-func Run(ctx context.Context, host string, cfg Config) Result {
+// The return value is named so the deferred timing actually lands on it: a
+// defer mutating a local runs after the result has already been copied out,
+// which is why the duration used to come back as zero.
+func Run(ctx context.Context, host string, cfg Config) (r Result) {
 	start := time.Now()
-	r := Result{IP: host, Status: "Skipped"}
+	r = Result{IP: host, Status: "Skipped", Started: start}
 
 	ctx, cancel := context.WithTimeout(ctx, cfg.Deadline)
 	defer cancel()
 
 	defer func() {
-		r.Duration = time.Since(start)
+		r.Ended = time.Now()
+		r.Duration = r.Ended.Sub(start)
 		r.DurationMS = r.Duration.Milliseconds()
 	}()
 

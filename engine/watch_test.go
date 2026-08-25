@@ -384,3 +384,91 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool, msg string) {
 	}
 	t.Fatal(msg)
 }
+
+// The reported failure: a pass over several hundred APs reported nothing until
+// it had finished, so a working re-scan looked like a frozen table. Results and
+// progress must arrive during the pass, not only at the end of it.
+func TestReScanReportsDuringThePassNotOnlyAfter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	fake := newRestartableAP(t, "7.1.1.0.6250")
+	opt := options{
+		probe: "tcp", sshPort: fake.port,
+		pingTimeout: 300 * time.Millisecond, pingConcurrency: 8, concurrency: 4,
+		watchEnabled: true, watchInterval: 250 * time.Millisecond,
+	}
+	cfg := ap.Config{
+		Credentials:    []ap.Credentials{{User: "admin", Password: "x"}},
+		Port:           fake.port,
+		ConnectTimeout: 2 * time.Second, DialogTimeout: 2 * time.Second, Deadline: 20 * time.Second,
+	}
+	results := []ap.Result{{IP: "127.0.0.1", Status: "Done", Reachable: true, Firmware: "7.1.1.0.6250"}}
+
+	var mu sync.Mutex
+	var order []string
+	emit := func(e Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case e.Kind == EvPhase && e.Phase == "rescan":
+			order = append(order, "pass-start")
+		case e.Kind == EvProgress && e.Phase == "rescan-ping":
+			order = append(order, "ping-progress")
+		case e.Kind == EvProgress && e.Phase == "rescan-read":
+			order = append(order, "read-progress")
+		case e.Kind == EvProgress && e.Phase == "watch":
+			order = append(order, "pass-end")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { watchAPs(ctx, opt, cfg, results, emit); close(done) }()
+
+	waitFor(t, 6*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, s := range order {
+			if s == "pass-end" {
+				return true
+			}
+		}
+		return false
+	}, "no re-scan pass completed")
+	cancel()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Everything up to the first pass-end is what the operator sees while the
+	// pass is running; it must not be empty.
+	var during []string
+	for _, s := range order {
+		if s == "pass-end" {
+			break
+		}
+		during = append(during, s)
+	}
+	if len(during) == 0 {
+		t.Fatalf("nothing was reported before the pass finished: %v", order)
+	}
+	if during[0] != "pass-start" {
+		t.Errorf("the pass did not announce itself first: %v", during)
+	}
+	has := func(want string) bool {
+		for _, s := range during {
+			if s == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("ping-progress") {
+		t.Errorf("no ping progress during the pass: %v", during)
+	}
+	if !has("read-progress") {
+		t.Errorf("no version-read progress during the pass: %v", during)
+	}
+}
