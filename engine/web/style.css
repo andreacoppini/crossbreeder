@@ -1,0 +1,263 @@
+:root {
+  --bg: #0e1116;
+  --panel: #151a21;
+  --panel2: #1b212a;
+  --line: #262e39;
+  --text: #dde5ee;
+  --muted: #8794a5;
+  --accent: #4da3ff;
+  --ok: #3ecf8e;
+  --warn: #f0b429;
+  --err: #ff6b6b;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+/* An author "display" rule beats the UA stylesheet's [hidden] { display: none },
+   so anything toggled by the hidden attribute needs this to actually hide. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---- header ---- */
+header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.brand { font-weight: 650; letter-spacing: .2px; }
+.brand span { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: 11px; }
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: #35404e; background: #212a35; }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #07121f; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #6bb4ff; border-color: #6bb4ff; }
+button.danger { background: #3a1e22; border-color: #5d2a30; color: #ffb3b3; }
+
+.counters { display: flex; gap: 16px; margin-left: auto; align-items: center; }
+.counter { text-align: right; line-height: 1.15; }
+.counter b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.counter i { font-style: normal; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+.counter.ok b { color: var(--ok); }
+.counter.err b { color: var(--err); }
+
+.progress {
+  flex: 1 1 180px;
+  max-width: 340px;
+  height: 6px;
+  background: var(--panel2);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.phase { color: var(--muted); font-size: 11px; min-width: 96px; }
+
+/* ---- layout ---- */
+.app { flex: 1; display: flex; min-height: 0; }
+
+aside {
+  width: 320px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 4px 0 24px;
+}
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* ---- config panel ---- */
+section { border-bottom: 1px solid var(--line); }
+section > h2 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--muted);
+  padding: 10px 14px 8px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+}
+section > h2::after { content: "−"; }
+section.collapsed > h2::after { content: "+"; }
+section.collapsed > .body { display: none; }
+.body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+
+label { display: block; }
+label > span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+input[type=text], input[type=password], input[type=number], select, textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 8px;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 92px; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; min-width: 0; }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { accent-color: var(--accent); }
+.hint { color: var(--muted); font-size: 11px; }
+.hint.warn { color: var(--warn); }
+
+/* ---- results table ---- */
+.tablebar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.tablebar input[type=text] { max-width: 220px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.chip.on { color: var(--text); border-color: var(--accent); }
+
+.tablewrap { flex: 1; overflow: auto; min-height: 0; }
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel2);
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  cursor: pointer;
+  z-index: 1;
+}
+tbody td { padding: 4px 10px; border-bottom: 1px solid #1b2129; white-space: nowrap; }
+tbody tr:hover { background: #182029; cursor: pointer; }
+tbody tr.sel { background: #1d2937; }
+tbody tr.pick { background: #24344a; }
+/* Dimmed while its value is being re-read, so a pass over hundreds of APs
+   reads as work in progress rather than a frozen table. */
+tbody tr.scanning td { opacity: .38; transition: opacity .25s; }
+tbody tr td { transition: opacity .25s; }
+tbody tr.pick:hover { background: #2a3c55; }
+tbody { user-select: none; }
+td.note { color: var(--warn); white-space: normal; font-family: system-ui, sans-serif; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.err { color: var(--err); white-space: normal; font-family: system-ui, sans-serif; }
+
+.st { padding: 1px 7px; border-radius: 4px; font-size: 11px; }
+.st-done { background: #123326; color: var(--ok); }
+.st-run { background: #10283f; color: var(--accent); }
+.st-fail { background: #331717; color: var(--err); }
+.st-skip { background: #23282f; color: var(--muted); }
+
+/* ---- drawer ---- */
+.drawer { flex: none; height: 210px; border-top: 1px solid var(--line); display: flex; flex-direction: column; background: var(--panel); }
+.drawer.big { height: 45vh; }
+.tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); align-items: center; }
+.tab { padding: 7px 12px; font-size: 12px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+.tab.on { color: var(--text); border-bottom-color: var(--accent); }
+.tab .n { color: var(--muted); font-size: 10px; margin-left: 4px; }
+.pane { flex: 1; overflow: auto; padding: 8px 12px; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; color: #c6d2df; }
+.pane .t { color: var(--muted); }
+.empty { color: var(--muted); font-family: system-ui, sans-serif; padding: 14px; }
+
+/* ---- modal ---- */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+.modal[hidden] { display: none; }
+.modal > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; max-width: 460px; }
+.modal h3 { margin: 0 0 10px; }
+.modal ul { margin: 10px 0; padding-left: 20px; color: var(--warn); }
+.modal .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #3a1e22; border: 1px solid #5d2a30; color: #ffb3b3; padding: 9px 16px; border-radius: 8px; }
+.toast[hidden] { display: none; }
+
+/* ---- firmware server ---- */
+.seg { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
+.seg .check span { font-size: 12px; color: var(--muted); }
+.seg .check b { color: var(--text); font-weight: 600; }
+#internalOpts, #externalOpts { display: flex; flex-direction: column; gap: 9px; margin-top: 9px; }
+
+.srvbox { border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; background: var(--bg); }
+.srvhead { display: flex; align-items: center; gap: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.srvbox .conn { font-family: var(--mono); font-size: 11px; margin-top: 7px; }
+.srvbox .conn .meter { height: 4px; background: var(--panel2); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+.srvbox .conn .meter > i { display: block; height: 100%; background: var(--accent); }
+
+.pklist { height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.pklist div { padding: 5px 10px; cursor: pointer; font-family: var(--mono); font-size: 12px; }
+.pklist div:hover { background: #1d2937; }
+
+/* ---- running state ---- */
+
+/* Nothing else on screen says "this will run until you stop it", so the Stop
+   button carries that itself while a run is in flight. */
+button.armed {
+  background: #3a1c20;
+  border-color: #7c3038;
+  color: #ffc9c9;
+  animation: armed-pulse 2.2s ease-in-out infinite;
+}
+button.armed:hover:not(:disabled) { background: #4a2329; border-color: #9a3b45; }
+@keyframes armed-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 92, 92, .30); }
+  50%      { box-shadow: 0 0 12px 2px rgba(255, 92, 92, .55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.armed { animation: none; box-shadow: 0 0 10px 1px rgba(255, 92, 92, .45); }
+}
+
+/* The config panel is the run's input; editing it mid-run would describe a run
+   that is not the one happening. */
+aside.locked .body { opacity: .5; }
+
+.locknote {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 8px 12px 4px;
+  padding: 7px 10px;
+  border: 1px solid #7c3038;
+  border-left-width: 3px;
+  border-radius: 5px;
+  background: #2a1619;
+  color: #ffc9c9;
+  font-size: 11.5px;
+}
