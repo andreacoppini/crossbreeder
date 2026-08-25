@@ -9,3 +9,7 @@ Debug*/Debug*\ Libs
 *.rbuistate
 *.xojo_uistate
 *.obsolete
+
+# Release artefacts. These are built by .github/workflows/release.yml and
+# attached to the GitHub release; they have no business in the repository.
+/dist/
