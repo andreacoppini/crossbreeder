@@ -15,7 +15,7 @@ let running = false;
 // The form is seeded from the flags the process was started with, so the
 // console and the command line agree on what "default" means.
 const FIELDS = ['user', 'concurrency', 'probe', 'pingTimeoutMs', 'pingRetries', 'pingConcurrency',
-  'sshPort', 'timeoutS', 'legacy', 'fwProto', 'fwPort', 'servePort', 'serveWaitS', 'serveDir'];
+  'sshPort', 'timeoutS', 'legacy', 'fwProto', 'fwPort', 'servePort', 'serveWaitS', 'serveDir', 'watchIntervalS'];
 
 async function loadDefaults() {
   const d = await (await fetch('/api/defaults')).json();
@@ -30,7 +30,7 @@ async function loadDefaults() {
 
 // Everything except the passwords is remembered between sessions.
 const SAVE = [...FIELDS, 'alsoDefault', 'firmware', 'factory', 'reboot', 'command',
-  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts'];
+  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts', 'watch', 'watchMinutes'];
 
 function persist() {
   const s = {};
@@ -112,12 +112,13 @@ function actionsChanged() {
   const el = $('destructive');
   el.hidden = d.length === 0;
   el.textContent = d.length ? 'This run changes the APs. You will be asked to confirm.' : '';
+  $('watchOpts').hidden = !$('watch').checked;
   $('fwSection').classList.toggle('collapsed', !$('firmware').checked);
   if ($('firmware').checked && internalMode()) { refreshFirmware(); refreshIPs(); }
   persist();
 }
 
-for (const id of ['firmware', 'factory', 'reboot', 'command']) {
+for (const id of ['firmware', 'factory', 'reboot', 'command', 'watch']) {
   $(id).addEventListener('change', actionsChanged);
   $(id).addEventListener('input', actionsChanged);
 }
@@ -312,8 +313,12 @@ function statusClass(s) {
   return 'st-skip';
 }
 
+const removed = new Set();
+
 function upsert(r) {
-  rows.set(r.ip, r);
+  if (removed.has(r.ip)) return;
+  // Watch updates carry only what changed, so merge rather than replace.
+  rows.set(r.ip, { ...(rows.get(r.ip) || {}), ...r });
   if (!order.includes(r.ip)) order.push(r.ip);
 }
 
@@ -323,7 +328,7 @@ function visible() {
     ? /Fail|Error/i.test(r.status) : r.status === statusFilter));
   if (filterText) {
     const q = filterText.toLowerCase();
-    list = list.filter((r) => [r.ip, r.mac, r.model, r.firmware, r.status, r.error, r.fw]
+    list = list.filter((r) => [r.ip, r.mac, r.model, r.firmware, r.status, r.error, r.fw, r.note]
       .some((v) => (v || '').toLowerCase().includes(q)));
   }
   if (sortKey) {
@@ -342,7 +347,67 @@ const cmpIP = (a, b) => {
   return p(a) - p(b);
 };
 
+// Selection is a set of IPs plus an anchor, so shift-click can extend a range
+// the way every table the operator already uses does.
+const picked = new Set();
+let anchor = null;
 let selected = null;
+
+function rowClick(ev, ip, listNow) {
+  const idx = listNow.indexOf(ip);
+  if (ev.shiftKey && anchor !== null) {
+    const a = listNow.indexOf(anchor);
+    if (a >= 0) {
+      picked.clear();
+      const [lo, hi] = a < idx ? [a, idx] : [idx, a];
+      for (let i = lo; i <= hi; i++) picked.add(listNow[i]);
+    }
+  } else if (ev.ctrlKey || ev.metaKey) {
+    picked.has(ip) ? picked.delete(ip) : picked.add(ip);
+    anchor = ip;
+  } else {
+    picked.clear();
+    picked.add(ip);
+    anchor = ip;
+    showTranscript(ip);
+    return;
+  }
+  render();
+}
+
+function removeSelected() {
+  if (!picked.size) return;
+  for (const ip of picked) {
+    removed.add(ip);
+    rows.delete(ip);
+  }
+  order = order.filter((ip) => !picked.has(ip));
+  // Take them out of the target list too, so a re-run does not bring them back.
+  const gone = new Set(picked);
+  $('hosts').value = $('hosts').value.split('\n')
+    .filter((l) => !gone.has(l.split(',')[0].trim().replace(/^"|"$/g, ''))).join('\n');
+  hostsChanged();
+  picked.clear();
+  anchor = null;
+  render();
+}
+
+$('removeSel').onclick = removeSelected;
+
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+  if (typing) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && picked.size) {
+    e.preventDefault();
+    removeSelected();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a' && order.length) {
+    e.preventDefault();
+    visible().forEach((r) => picked.add(r.ip));
+    render();
+  }
+  if (e.key === 'Escape' && picked.size) { picked.clear(); render(); }
+});
 
 function render() {
   const list = visible();
@@ -350,19 +415,23 @@ function render() {
   $('shown').textContent = list.length === order.length
     ? `${order.length} rows` : `${list.length} of ${order.length} rows`;
 
+  const ips = list.map((r) => r.ip);
   const frag = document.createDocumentFragment();
   for (const r of list) {
     const tr = document.createElement('tr');
-    if (r.ip === selected) tr.className = 'sel';
-    tr.onclick = () => showTranscript(r.ip);
+    tr.className = (picked.has(r.ip) ? 'pick ' : '') + (r.ip === selected ? 'sel' : '');
+    tr.onclick = (ev) => rowClick(ev, r.ip, ips);
     tr.innerHTML =
       `<td>${esc(r.ip)}</td><td>${esc(r.mac)}</td><td>${esc(r.model)}</td><td>${esc(r.firmware)}</td>` +
       `<td class="num">${r.reachable ? esc(r.ping) : '—'}</td>` +
       `<td><span class="st ${statusClass(r.status)}">${esc(r.status)}</span></td>` +
-      `<td>${esc(r.fw)}</td><td class="err">${esc(r.error)}</td>`;
+      `<td>${esc(r.fw)}</td><td class="${r.error ? 'err' : 'note'}">${esc(r.error || r.note)}</td>`;
     frag.appendChild(tr);
   }
   rowsEl.replaceChildren(frag);
+  $('selInfo').textContent = picked.size ? `${picked.size} selected` : '';
+  $('removeSel').disabled = picked.size === 0;
+  $('removeSel').textContent = picked.size ? `Remove ${picked.size}` : 'Remove';
   updateChips();
 }
 
@@ -446,6 +515,7 @@ function request() {
     fwProto: $('fwProto').value, fwHost: $('fwHost').value, fwPort: $('fwPort').value,
     fwUser: $('fwUser').value, fwPass: $('fwPass').value,
     fwFile: internalMode() ? $('fwFileSel').value : $('fwFile').value,
+    watch: $('watch').checked, watchMinutes: num('watchMinutes'), watchIntervalS: num('watchIntervalS'),
     sshPort: $('sshPort').value, timeoutS: num('timeoutS'), legacy: $('legacy').checked,
     serveWaitS: num('serveWaitS'),
   };
@@ -474,6 +544,7 @@ $('cGo').onclick = () => { $('confirm').hidden = true; start(); };
 
 async function start() {
   rows.clear(); order = []; selected = null;
+  picked.clear(); removed.clear(); anchor = null;
   // Show every address up front, so the grid is the full worklist from the
   // first second rather than filling in as results trickle back.
   for (const ip of hostList()) {
@@ -536,13 +607,15 @@ src.onmessage = (m) => {
       $('phase').textContent =
         e.phase === 'sweep' ? `probing ${e.total}` :
         e.phase === 'ssh' ? `connecting to ${e.total}` :
-        e.phase === 'download' ? `${e.total} downloading` : e.phase;
+        e.phase === 'download' ? `${e.total} downloading` :
+        e.phase === 'watch' ? `watching ${e.total}` : e.phase;
       setRunning(true);
       break;
 
     case 'progress':
       if (e.total) $('bar').style.width = `${(e.done / e.total) * 100}%`;
       if (e.phase === 'download') $('phase').textContent = `downloaded ${e.done}/${e.total}`;
+      if (e.phase === 'watch') $('phase').textContent = `upgraded ${e.done}/${e.total}`;
       break;
 
     case 'sweep':
@@ -562,7 +635,7 @@ src.onmessage = (m) => {
       upsert({
         ip: r.ip, mac: r.mac || '', model: r.model || '', firmware: r.firmware || '',
         ping: r.reachable ? (r.ping_ms || 0).toFixed(1) : '', reachable: r.reachable,
-        status: r.status, fw: r.fw_status || '', error: r.error || '',
+        status: r.status, fw: r.fw_status || '', error: r.error || '', note: r.note || '',
         transcript: e.transcript || '',
       });
       if (r.status === 'Done') nDone++; else if (/Fail|Error/i.test(r.status)) nFail++;

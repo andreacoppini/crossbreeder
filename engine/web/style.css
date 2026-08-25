@@ -168,6 +168,10 @@ thead th {
 tbody td { padding: 4px 10px; border-bottom: 1px solid #1b2129; white-space: nowrap; }
 tbody tr:hover { background: #182029; cursor: pointer; }
 tbody tr.sel { background: #1d2937; }
+tbody tr.pick { background: #24344a; }
+tbody tr.pick:hover { background: #2a3c55; }
+tbody { user-select: none; }
+td.note { color: var(--warn); white-space: normal; font-family: system-ui, sans-serif; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.err { color: var(--err); white-space: normal; font-family: system-ui, sans-serif; }
 

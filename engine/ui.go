@@ -194,6 +194,10 @@ type runRequest struct {
 	FwFile    string `json:"fwFile"`
 	FwWaitS   int    `json:"fwWaitS"`
 
+	Watch         bool `json:"watch"`
+	WatchMinutes  int  `json:"watchMinutes"`
+	WatchInterval int  `json:"watchIntervalS"`
+
 	SSHPort    string `json:"sshPort"`
 	TimeoutS   int    `json:"timeoutS"`
 	Legacy     bool   `json:"legacy"`
@@ -300,6 +304,7 @@ func (u *uiServer) handleDefaults(w http.ResponseWriter, r *http.Request) {
 		"pingConcurrency": u.opt.pingConcurrency,
 		"sshPort":         u.opt.sshPort,
 		"timeoutS":        int(u.opt.timeout / time.Second),
+		"watchIntervalS":  int(u.opt.watchInterval / time.Second),
 		"legacy":          u.opt.legacy,
 		"fwProto":         u.opt.fwProto,
 		"fwPort":          u.opt.fwPort,
@@ -374,13 +379,13 @@ func (u *uiServer) handleExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", `attachment; filename="crossbreeder-results.csv"`)
 		cw := csv.NewWriter(w)
-		_ = cw.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Error"})
+		_ = cw.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Watch", "Error"})
 		for _, res := range results {
 			ping := "Timeout"
 			if res.Reachable {
 				ping = fmt.Sprintf("%.1f", res.PingMS)
 			}
-			_ = cw.Write([]string{res.IP, res.MAC, res.Model, res.Firmware, ping, res.Status, res.FwStatus, res.Error})
+			_ = cw.Write([]string{res.IP, res.MAC, res.Model, res.Firmware, ping, res.Status, res.FwStatus, res.Note, res.Error})
 		}
 		cw.Flush()
 	}
@@ -423,6 +428,11 @@ func (o options) merge(r runRequest) options {
 	setDurIfPositive(&out.timeout, time.Duration(r.TimeoutS)*time.Second)
 	setDurIfPositive(&out.serveWait, time.Duration(r.ServeWaitS)*time.Second)
 	setDurIfPositive(&out.fwWait, time.Duration(r.FwWaitS)*time.Second)
+	out.watch = 0
+	if r.Watch {
+		out.watch = time.Duration(max(1, r.WatchMinutes)) * time.Minute
+		setDurIfPositive(&out.watchInterval, time.Duration(r.WatchInterval)*time.Second)
+	}
 	return out
 }
 

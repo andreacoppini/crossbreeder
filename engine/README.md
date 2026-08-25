@@ -68,6 +68,12 @@ Anything that changes an AP â€” firmware, factory reset, reboot, a CLI command â
 is listed back to you for confirmation before the run starts. Everything except
 the passwords is remembered between sessions.
 
+Rows select the way a file manager's do: click, shift-click for a range,
+ctrl-click (cmd on a Mac) to add or drop one, ctrl-A for everything the current
+filter shows, Escape to clear. **Remove** or the Delete key drops the selected
+rows, and takes those addresses out of the target list too, so a re-run does not
+bring them back.
+
 ## Build
 
 ```
@@ -236,6 +242,24 @@ TFTP's lockstep ack-per-block makes it slow and fragile besides. Use
 `fw set` values that are empty are skipped: the AP rejects the whole command and
 prints its usage page rather than accepting a blank setting, so `-fw-user` and
 `-fw-pass` are only sent when you supply them.
+
+### Watching for the reboot
+
+A firmware push, a factory reset and a reboot all end with the AP going away and
+coming back some minutes later, so the run finishing tells you nothing about
+whether it worked. `-watch 20m` (or the checkbox in the console) keeps following
+the APs afterwards:
+
+- every `-watch-interval` (30s by default) it pings the APs it acted on;
+- one that stops answering reads as **Rebooting** rather than failed;
+- one that answers gets its version re-read, and a version different from the
+  one it started with is reported as **Upgraded from &lt;old&gt;**, with the grid's
+  firmware column updated;
+- an AP confirmed upgraded is dropped from the watch list, and the phase ends
+  early once they all are.
+
+It re-reads inventory only. Actions are never re-issued, which matters on an AP
+that is halfway through a reboot.
 
 ### Factory resets
 

@@ -79,7 +79,8 @@ func TestMergeIgnoresServeDirWhenNotServing(t *testing.T) {
 func TestExportProducesTheSameColumnsAsTheCLI(t *testing.T) {
 	u := &uiServer{subs: map[chan Event]struct{}{}}
 	u.results = []ap.Result{
-		{IP: "10.0.0.1", MAC: "AA:BB", Model: "R550", Firmware: "7.2", Reachable: true, PingMS: 1.25, Status: "Done", FwStatus: "In progress"},
+		{IP: "10.0.0.1", MAC: "AA:BB", Model: "R550", Firmware: "7.2", Reachable: true, PingMS: 1.25,
+			Status: "Done", FwStatus: "In progress", Note: "Upgraded from 7.1"},
 		{IP: "10.0.0.2", Status: "No ping reply"},
 	}
 
@@ -89,11 +90,15 @@ func TestExportProducesTheSameColumnsAsTheCLI(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines:\n%s", len(lines), w.Body.String())
 	}
-	if !strings.HasPrefix(lines[0], "IP Address,MAC Address,Model,Fw Version,Ping (ms),Result,Firmware Push,Error") {
+	if !strings.HasPrefix(lines[0], "IP Address,MAC Address,Model,Fw Version,Ping (ms),Result,Firmware Push,Watch,Error") {
 		t.Errorf("header = %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "1.2") || !strings.Contains(lines[1], "In progress") {
 		t.Errorf("row = %q", lines[1])
+	}
+	// What the watch phase concluded has to survive into the exported file.
+	if !strings.Contains(lines[1], "Upgraded from 7.1") {
+		t.Errorf("watch note missing from the export: %q", lines[1])
 	}
 	if !strings.Contains(lines[2], "Timeout") {
 		t.Errorf("an unreachable row should show Timeout for the ping: %q", lines[2])
@@ -137,5 +142,28 @@ func TestRunRejectsAnEmptyHostList(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "no addresses") {
 		t.Errorf("body = %q", w.Body.String())
+	}
+}
+
+// The console form must be able to turn watching on, and leave it off by default.
+func TestMergeAppliesWatchSettings(t *testing.T) {
+	base := options{watchInterval: 30 * time.Second}
+
+	if got := base.merge(runRequest{}); got.watch != 0 {
+		t.Errorf("watch = %v with the box unticked", got.watch)
+	}
+
+	got := base.merge(runRequest{Watch: true, WatchMinutes: 20, WatchInterval: 45})
+	if got.watch != 20*time.Minute {
+		t.Errorf("watch = %v, want 20m", got.watch)
+	}
+	if got.watchInterval != 45*time.Second {
+		t.Errorf("interval = %v, want 45s", got.watchInterval)
+	}
+
+	// A blank minutes box must not mean "watch for zero time", which would
+	// silently do nothing.
+	if got := base.merge(runRequest{Watch: true}); got.watch <= 0 {
+		t.Errorf("watch = %v with no duration given", got.watch)
 	}
 }

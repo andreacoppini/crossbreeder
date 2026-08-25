@@ -208,6 +208,9 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 		results[i] = ap.Result{IP: h, Status: noReplyStatus(opt.probe), PingMS: msOf(pings[h].RTT)}
 	}
 
+	// Follow the APs we changed until they come back on new firmware. This runs
+	// before the download wait only when nothing is being served, since a push
+	// has to finish downloading before there is anything to reboot into.
 	// Hold the server up until the APs that accepted the push have taken the
 	// image; they download long after their SSH session closed.
 	if srv != nil {
@@ -220,6 +223,20 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 		if len(pushed) > 0 {
 			emit(Event{Kind: EvPhase, Phase: "download", Total: len(pushed)})
 			waitForDownloads(ctx, srv, pushed, opt.serveWait, emit)
+		}
+	}
+
+	if opt.watch > 0 {
+		for ip, u := range watchAPs(ctx, opt, cfg, results, emit) {
+			for i := range results {
+				if results[i].IP == ip {
+					results[i].Firmware = u.Firmware
+					results[i].Note = u.Note
+					if u.MAC != "" {
+						results[i].MAC, results[i].Model = u.MAC, u.Model
+					}
+				}
+			}
 		}
 	}
 

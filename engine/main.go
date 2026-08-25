@@ -62,6 +62,9 @@ type options struct {
 	uiPort    int
 	showVers  bool
 
+	watch         time.Duration
+	watchInterval time.Duration
+
 	probe           string
 	deadOut         string
 	pingTimeout     time.Duration
@@ -172,10 +175,7 @@ func cliPrinter(opt options) Emitter {
 			reportDead(os.Stderr, e.Dead, opt.probe, opt.verbose)
 		case EvResult:
 			r := e.Result
-			detail := r.Error
-			if detail == "" {
-				detail = r.FwStatus
-			}
+			detail := firstNonEmpty(r.Error, r.Note, r.FwStatus)
 			fmt.Fprintf(os.Stderr, "[%d/%d] %-15s %-12s %-10s %-14s %s\n",
 				e.Done, e.Total, r.IP, r.Status, r.Model, r.Firmware, detail)
 			if opt.verbose && r.Transcript != "" {
@@ -187,6 +187,15 @@ func cliPrinter(opt options) Emitter {
 			}
 		}
 	}
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func countAlive(rs []ap.Result) int {
@@ -280,7 +289,7 @@ func writeResults(path string, results []ap.Result) error {
 
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Error"}); err != nil {
+	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Watch", "Error"}); err != nil {
 		return err
 	}
 	for _, r := range results {
@@ -288,7 +297,7 @@ func writeResults(path string, results []ap.Result) error {
 		if r.Reachable {
 			ping = fmt.Sprintf("%.1f", r.PingMS)
 		}
-		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.FwStatus, r.Error}); err != nil {
+		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.FwStatus, r.Note, r.Error}); err != nil {
 			return err
 		}
 	}

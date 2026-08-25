@@ -76,15 +76,18 @@ type Config struct {
 
 // Result is one row of the output table.
 type Result struct {
-	IP         string        `json:"ip"`
-	Reachable  bool          `json:"reachable"`
-	PingMS     float64       `json:"ping_ms"`
-	MAC        string        `json:"mac,omitempty"`
-	Model      string        `json:"model,omitempty"`
-	Firmware   string        `json:"firmware,omitempty"`
-	Kind       Kind          `json:"kind,omitempty"`
-	Status     string        `json:"status"`
-	FwStatus   string        `json:"fw_status,omitempty"`
+	IP        string  `json:"ip"`
+	Reachable bool    `json:"reachable"`
+	PingMS    float64 `json:"ping_ms"`
+	MAC       string  `json:"mac,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	Firmware  string  `json:"firmware,omitempty"`
+	Kind      Kind    `json:"kind,omitempty"`
+	Status    string  `json:"status"`
+	FwStatus  string  `json:"fw_status,omitempty"`
+	// Note is what the watch phase has to say about this AP after the actions
+	// were issued: rebooting, back up, upgraded.
+	Note       string        `json:"note,omitempty"`
 	Error      string        `json:"error,omitempty"`
 	Duration   time.Duration `json:"-"`
 	DurationMS int64         `json:"duration_ms"`
