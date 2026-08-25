@@ -1,0 +1,84 @@
+name: Release
+
+# Builds every platform from the tagged commit and publishes them, so the
+# binaries people download are demonstrably built from the tag rather than
+# uploaded from somebody's laptop.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks out whatever ref triggered this: the tag on a tag push, or the
+      # branch it was dispatched from. When dispatched, the release action
+      # creates the tag at that commit.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: engine/go.sum
+
+      - name: Test
+        working-directory: engine
+        run: go test ./...
+
+      - name: Build
+        working-directory: engine
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "Building ${VERSION}"
+          mkdir -p ../dist
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+
+          build() { # os arch ext
+            GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "$LDFLAGS" \
+              -o "../dist/crossbreeder-plus-$1-$2$3" .
+          }
+          build windows amd64 .exe
+          build windows arm64 .exe
+          build darwin  amd64 ""
+          build darwin  arm64 ""
+          build linux   amd64 ""
+          build linux   arm64 ""
+
+      - name: Make the macOS universal binary
+        run: python3 scripts/make-universal.py
+          dist/crossbreeder-plus-darwin-amd64
+          dist/crossbreeder-plus-darwin-arm64
+          dist/crossbreeder-plus-macos-universal
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd dist
+          chmod +x crossbreeder-plus-macos-universal crossbreeder-plus-linux-* crossbreeder-plus-darwin-*
+          zip -q crossbreeder-plus-macos.zip crossbreeder-plus-macos-universal
+          tar czf crossbreeder-plus-linux-amd64.tar.gz crossbreeder-plus-linux-amd64
+          tar czf crossbreeder-plus-linux-arm64.tar.gz crossbreeder-plus-linux-arm64
+          rm -f crossbreeder-plus-darwin-* crossbreeder-plus-linux-amd64 crossbreeder-plus-linux-arm64
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Crossbreeder Plus ${{ github.event.inputs.tag || github.ref_name }}
+          body_path: docs/RELEASE-NOTES.md
+          files: dist/*
+          fail_on_unmatched_files: true
