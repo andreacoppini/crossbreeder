@@ -80,10 +80,15 @@ type pat struct {
 	// distinguishes a prompt the device is waiting at from the same characters
 	// appearing in a banner or in echoed output.
 	atEnd bool
+	// fold matches without regard to case, for prompts whose capitalisation
+	// differs between firmware builds ("New Password:" against "new password:").
+	fold bool
 }
 
-func anywhere(s string) pat { return pat{text: s} }
-func atEnd(s string) pat    { return pat{text: s, atEnd: true} }
+func anywhere(s string) pat     { return pat{text: s} }
+func atEnd(s string) pat        { return pat{text: s, atEnd: true} }
+func anywhereFold(s string) pat { return pat{text: s, fold: true} }
+func atEndFold(s string) pat    { return pat{text: s, atEnd: true, fold: true} }
 
 // Collect keeps reading for up to d and returns whatever arrived. It is for
 // watching a long-running operation that prints progress without ever coming
@@ -168,7 +173,11 @@ func (e *expecter) scan(want []pat) (int, string, bool) {
 		if w.atEnd {
 			continue
 		}
-		if at := strings.Index(s, w.text); at >= 0 && (bestAt < 0 || at < bestAt) {
+		at := strings.Index(s, w.text)
+		if w.fold {
+			at = indexFold(s, w.text)
+		}
+		if at >= 0 && (bestAt < 0 || at < bestAt) {
 			bestIdx, bestAt = i, at
 		}
 	}
@@ -182,7 +191,12 @@ func (e *expecter) scan(want []pat) (int, string, bool) {
 		if !w.atEnd {
 			continue
 		}
-		if strings.HasSuffix(tail, strings.TrimRight(w.text, " ")) {
+		text := strings.TrimRight(w.text, " ")
+		hit := strings.HasSuffix(tail, text)
+		if w.fold {
+			hit = hasSuffixFold(tail, text)
+		}
+		if hit {
 			if bestIdx < 0 || len(w.text) > len(want[bestIdx].text) {
 				bestIdx = i
 			}
@@ -215,4 +229,45 @@ func (e *expecter) drain() string {
 	s := e.buf.String()
 	e.buf.Reset()
 	return s
+}
+
+// indexFold is strings.Index with ASCII case folding. It compares byte by byte
+// rather than lowercasing a copy, so the index it returns is an offset into s
+// itself — which scan relies on to consume exactly the matched text.
+func indexFold(s, sub string) int {
+	if sub == "" {
+		return 0
+	}
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if equalFold(s[i:i+len(sub)], sub) {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasSuffixFold(s, suffix string) bool {
+	return len(s) >= len(suffix) && equalFold(s[len(s)-len(suffix):], suffix)
+}
+
+// equalFold compares two equal-length strings with ASCII case folding. The AP
+// CLI is ASCII, so this deliberately does not do Unicode folding, which could
+// change byte length and so break the offsets indexFold hands back.
+func equalFold(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if lowerASCII(a[i]) != lowerASCII(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func lowerASCII(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
 }

@@ -27,7 +27,7 @@ import (
 	"github.com/andreacoppini/crossbreeder/engine/ap"
 )
 
-var version = "1.0.0"
+var version = "1.0.1"
 
 type options struct {
 	csvPath     string
@@ -36,6 +36,9 @@ type options struct {
 	pass        string
 	askPass     bool
 	passEnv     string
+	newPass     string
+	newPassEnv  string
+	askNewPass  bool
 	alsoDefault bool
 	concurrency int
 
@@ -125,7 +128,12 @@ func run(opt options) error {
 		return err
 	}
 
-	cfg, notes, err := buildConfig(opt, password)
+	newPassword, err := resolveNewPassword(opt)
+	if err != nil {
+		return err
+	}
+
+	cfg, notes, err := buildConfig(opt, password, newPassword)
 	if err != nil {
 		return err
 	}

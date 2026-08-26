@@ -35,7 +35,7 @@ func TestCredentialSummaryFlagsAnEmptyPassword(t *testing.T) {
 // A password with no username used to be dropped in silence, and the run then
 // tried the factory defaults and blamed the AP.
 func TestPasswordWithoutUsernameIsRefused(t *testing.T) {
-	_, _, err := buildConfig(options{}, "J^60*k{PH%mp1G5e")
+	_, _, err := buildConfig(options{}, "J^60*k{PH%mp1G5e", "")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -45,7 +45,7 @@ func TestPasswordWithoutUsernameIsRefused(t *testing.T) {
 }
 
 func TestNoCredentialsFallsBackToFactoryDefaults(t *testing.T) {
-	cfg, _, err := buildConfig(options{}, "")
+	cfg, _, err := buildConfig(options{}, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestNoCredentialsFallsBackToFactoryDefaults(t *testing.T) {
 }
 
 func TestAlsoDefaultAppendsTheFactoryPair(t *testing.T) {
-	cfg, _, err := buildConfig(options{user: "admin", alsoDefault: true}, "pw")
+	cfg, _, err := buildConfig(options{user: "admin", alsoDefault: true}, "pw", "")
 	if err != nil {
 		t.Fatal(err)
 	}

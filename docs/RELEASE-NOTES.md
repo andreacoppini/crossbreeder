@@ -42,6 +42,21 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
   rebooting and one that comes back on a new version is reported as upgraded.
 - **CSV and JSON output**, with a row for every address including the silent
   ones.
+- **Onboards factory-default APs.** An AP that demands a password change at
+  first login has the password you supply set on it, and the run carries on to
+  whatever else you asked for. Without one, it is reported as needing a password
+  rather than being guessed at.
+
+## Fixed
+
+- **A forced password change no longer kills the run**
+  ([#5](https://github.com/andreacoppini/crossbreeder/issues/5)). The CLI login
+  matched the password prompt as a substring, so *"Please enter new password:"*
+  was answered with the password the tool had just logged in with. The AP
+  refused it, and the session never reached a prompt — so nothing after it ran.
+  Prompts are now matched at the end of the line and case-insensitively, which
+  also stops a status line like *"Password changed."* being mistaken for a
+  prompt and the password being sent as a CLI command.
 
 ## Known limits
 

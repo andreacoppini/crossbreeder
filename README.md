@@ -55,6 +55,11 @@ Use `-ask-pass` rather than `-pass`: `cmd.exe` eats `^` as an escape character,
 every shell claims a different set, and an argument is visible in the process
 list. Run `crossbreeder-plus -h` for the rest.
 
+A factory-default AP demands a password change before it will do anything else.
+Give it one with the **New password** field, or `-new-pass` / `-ask-new-pass`,
+and it is set as part of the same run. Leave it empty and those APs are reported
+as needing one and skipped, rather than being guessed at.
+
 ## What it does
 
 - **Pings first.** Most addresses on a site list are dead, and each one costs a

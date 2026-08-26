@@ -6,6 +6,7 @@ package ap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -72,6 +73,11 @@ type Config struct {
 	// LegacyAlgorithms re-enables the SHA-1 / CBC primitives that pre-2015
 	// ZoneFlex firmware negotiates and modern SSH stacks refuse by default.
 	LegacyAlgorithms bool
+	// NewPassword is what to answer with when an AP demands a password change
+	// at first login, which a factory-default AP does before it will do
+	// anything else. Left empty, such an AP is reported and skipped rather than
+	// guessed at: the tool never invents a credential for a device.
+	NewPassword string
 }
 
 // Result is one row of the output table.
@@ -141,6 +147,10 @@ var unleashed = dialect{
 	},
 }
 
+// ErrPasswordChangeRequired means the AP refused to go any further until its
+// password was changed, and no replacement was supplied to set.
+var ErrPasswordChangeRequired = errors.New("AP requires a password change; supply a new password to set one")
+
 // Run drives one AP to completion. It never touches shared state, so N of these
 // may be in flight at once.
 // The return value is named so the deferred timing actually lands on it: a
@@ -209,10 +219,16 @@ func run(ctx context.Context, host string, cfg Config, r *Result) error {
 	e := newExpecter(stdin, stdout, cfg.DialogTimeout)
 	defer func() { r.Transcript = e.Transcript() }()
 
-	d, err := login(e, cfg.Credentials)
+	d, changed, err := login(e, cfg.Credentials, cfg.NewPassword)
 	if err != nil {
 		r.Status = "Login Failed"
+		if errors.Is(err, ErrPasswordChangeRequired) {
+			r.Status = "Needs Password"
+		}
 		return err
+	}
+	if changed {
+		r.Note = "password changed"
 	}
 	r.Kind = d.kind
 
@@ -370,61 +386,123 @@ func dial(ctx context.Context, host string, cfg Config) (*ssh.Client, error) {
 // SSH transport login was the only one, and some answer a rejected password
 // with a fresh banner; guessing wrong used to cost a full timeout and then lose
 // the prompt that had already arrived.
-func login(e *expecter, creds []Credentials) (dialect, error) {
+func login(e *expecter, creds []Credentials, newPass string) (dialect, bool, error) {
 	if len(creds) == 0 {
-		return dialect{}, fmt.Errorf("no credentials supplied")
+		return dialect{}, false, fmt.Errorf("no credentials supplied")
 	}
 
 	const (
-		wantLogin = iota
-		wantUser
-		wantPassword
-		wantIncorrect
-		wantDenied
-		promptZF
-		promptULEnable
-		promptUL
+		actLogin = iota
+		actUser
+		actPassword
+		actNewPassword
+		actConfirmPassword
+		actRejected
+		actIncorrect
+		actDenied
+		actPromptZF
+		actPromptUL
 	)
-	pats := []pat{
-		anywhere("ogin:"),
-		anywhere("sername:"),
-		anywhere("assword"),
-		anywhere("Login incorrect"),
-		anywhere("Permission denied"),
-		atEnd("rkscli: "),
-		atEnd("(ap-mode)# "),
-		atEnd("> "),
+
+	var (
+		pats []pat
+		acts []int
+	)
+	add := func(act int, ps ...pat) {
+		for _, x := range ps {
+			pats = append(pats, x)
+			acts = append(acts, act)
+		}
 	}
+
+	// The prompts are end-anchored: these same words appear inside banners and
+	// status lines ("Password changed."), and answering one of those would send
+	// the password as a command, putting it in the AP's history. Anchoring also
+	// buys the disambiguation for free, because scan resolves end-anchored
+	// patterns longest-first: "confirm new password:" beats "new password:",
+	// which beats "password:". Getting that wrong is the bug this fixes.
+	add(actLogin, atEndFold("login:"))
+	add(actUser, atEndFold("username:"))
+	add(actPassword, atEndFold("password:"), atEndFold("password :"))
+	add(actNewPassword,
+		atEndFold("new password:"), atEndFold("new password :"),
+		atEndFold("change your password:"), atEndFold("change your password :"),
+	)
+	add(actConfirmPassword,
+		atEndFold("confirm new password:"), atEndFold("confirm new password :"),
+		atEndFold("confirm password:"), atEndFold("confirm password :"),
+		atEndFold("re-enter new password:"), atEndFold("re-enter new password :"),
+		atEndFold("reenter new password:"), atEndFold("reenter new password :"),
+		atEndFold("retype new password:"), atEndFold("retype new password :"),
+		atEndFold("verify new password:"), atEndFold("verify new password :"),
+		atEndFold("confirm:"), atEndFold("confirm :"),
+	)
+	// Messages, by contrast, stay free: they have to win against a prompt that
+	// arrives after them, which earliest-position matching gives us.
+	add(actRejected,
+		anywhereFold("can not be the same"), anywhereFold("cannot be the same"),
+		anywhereFold("must be different"), anywhereFold("do not match"),
+		anywhereFold("does not match"), anywhereFold("too short"),
+		anywhereFold("password is invalid"), anywhereFold("not strong enough"),
+	)
+	add(actIncorrect, anywhere("Login incorrect"))
+	add(actDenied, anywhere("Permission denied"))
+	add(actPromptZF, atEnd("rkscli: "))
+	add(actPromptUL, atEnd("(ap-mode)# "), atEnd("> "))
 
 	cred := 0
+	changed := false
 	// Bounded so a device that loops its banner cannot spin here forever.
-	for step := 0; step < 4*len(creds)+8; step++ {
-		i, _, err := e.ExpectPats(pats...)
+	for step := 0; step < 4*len(creds)+12; step++ {
+		i, out, err := e.ExpectPats(pats...)
 		if err != nil {
-			return dialect{}, fmt.Errorf("%w; last seen: %s", err, tail(e.Pending(), 160))
+			return dialect{}, changed, fmt.Errorf("%w; last seen: %s", err, tail(e.Pending(), 160))
 		}
 
-		switch i {
-		case wantLogin, wantUser:
+		switch acts[i] {
+		case actLogin, actUser:
 			if err := e.Send(creds[cred].User); err != nil {
-				return dialect{}, err
+				return dialect{}, changed, err
 			}
-		case wantPassword:
-			if err := e.Send(creds[cred].Password); err != nil {
-				return dialect{}, err
+		case actPassword:
+			// After a change the AP may drop the session back to a login, and
+			// the old password will no longer be accepted.
+			pw := creds[cred].Password
+			if changed {
+				pw = newPass
 			}
-		case wantIncorrect, wantDenied:
+			if err := e.Send(pw); err != nil {
+				return dialect{}, changed, err
+			}
+		case actNewPassword, actConfirmPassword:
+			if newPass == "" {
+				return dialect{}, false, ErrPasswordChangeRequired
+			}
+			if err := e.Send(newPass); err != nil {
+				return dialect{}, changed, err
+			}
+			// Only the confirmation tells us the AP accepted it; a rejection
+			// arrives as its own message and is handled below.
+			if acts[i] == actConfirmPassword {
+				changed = true
+			}
+		case actRejected:
+			return dialect{}, false, fmt.Errorf("AP rejected the new password: %s", tail(out, 120))
+		case actIncorrect, actDenied:
+			if changed {
+				return dialect{}, changed, fmt.Errorf("AP rejected the new password at re-login")
+			}
 			cred++
 			if cred >= len(creds) {
-				return dialect{}, fmt.Errorf("AP rejected %s", credSummary(creds))
+				return dialect{}, false, fmt.Errorf("AP rejected %s", credSummary(creds))
 			}
-		case promptZF:
-			return zoneFlex, nil
-		case promptULEnable, promptUL:
-			return unleashed, nil
+		case actPromptZF:
+			return zoneFlex, changed, nil
+		case actPromptUL:
+			return unleashed, changed, nil
 		}
 	}
-	return dialect{}, fmt.Errorf("could not reach a CLI prompt; last seen: %s", tail(e.Pending(), 160))
+	return dialect{}, changed, fmt.Errorf("could not reach a CLI prompt; last seen: %s", tail(e.Pending(), 160))
 }
 
 // fwSummary reduces the AP's answer to "fw update" to the part worth carrying
