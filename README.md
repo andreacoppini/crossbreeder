@@ -31,6 +31,41 @@ macOS the first run needs
 `xattr -d com.apple.quarantine crossbreeder-plus-macos-universal`, or
 right-click → Open. `SHA256SUMS.txt` in the release covers every file.
 
+### If Windows Defender flags it
+
+Defender has reported `Trojan:Win32/Wacatac.B!ml` against the Windows build.
+The `!ml` suffix marks it as a machine-learning verdict rather than a match
+against known malware, and `Wacatac` is Microsoft's catch-all family — the
+bucket unsigned, low-reputation executables tend to land in.
+
+What is worth knowing before you decide whether to trust it:
+
+- Every binary is built by [GitHub Actions](.github/workflows/release.yml) from
+  the tagged commit in this repository, not uploaded from a laptop. The commit
+  is stamped inside the binary: `go version -m crossbreeder-plus-...` prints
+  `vcs.revision`, and it should match the tag.
+- `SHA256SUMS.txt` in the release covers every file, so you can confirm the
+  download is the one that was built.
+- Nothing is packed or obfuscated; the source for all of it is here.
+- The tool does legitimately do what heuristics look for: it opens SSH sessions,
+  sweeps address ranges with ICMP and TCP, serves files over HTTP, and handles
+  credentials. That is the job, and it reads like a network tool because it is
+  one.
+- Each release is a new file that Defender has never seen, so reputation starts
+  from nothing again every time.
+
+None of that is proof of anything on its own. If you are not comfortable,
+build it yourself — it needs only Go, and takes seconds:
+
+```
+cd engine && go build -o crossbreeder-plus.exe .
+```
+
+If you hit this detection, reporting it to Microsoft at
+<https://www.microsoft.com/en-us/wdsi/filesubmission> genuinely helps: their
+false-positive review usually clears it within a few days and the correction
+reaches everyone.
+
 ## Using it
 
 Run it with **no arguments** — or double-click it — and it opens a console in
