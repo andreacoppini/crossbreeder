@@ -20,6 +20,7 @@ Grab the file for your platform from the
 | Platform | File |
 |---|---|
 | Windows | `crossbreeder-plus-windows-amd64.exe` (`-arm64` for Surface and Snapdragon) |
+| Windows, zipped | `crossbreeder-plus-windows-amd64.zip` — same binary, for networks that block `.exe` downloads |
 | macOS | `crossbreeder-plus-macos.zip` — one universal binary for Intel and Apple Silicon |
 | Linux | `crossbreeder-plus-linux-amd64.tar.gz` (or `-arm64`) |
 
