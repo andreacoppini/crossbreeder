@@ -13,6 +13,9 @@ func parseFlags() options {
 	flag.StringVar(&o.pass, "pass", "", "AP password")
 	flag.BoolVar(&o.askPass, "ask-pass", false, "prompt for the AP password instead of passing it on the command line")
 	flag.StringVar(&o.passEnv, "pass-env", "", "read the AP password from this environment variable")
+	flag.StringVar(&o.newPass, "new-pass", "", "password to set when an AP demands a change at first login")
+	flag.BoolVar(&o.askNewPass, "ask-new-pass", false, "prompt for the new password instead of passing it on the command line")
+	flag.StringVar(&o.newPassEnv, "new-pass-env", "", "read the new password from this environment variable")
 	flag.BoolVar(&o.alsoDefault, "default", false, "also try the factory-default super/sp-admin login")
 	flag.IntVar(&o.concurrency, "c", 25, "how many APs to work at once")
 

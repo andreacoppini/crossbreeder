@@ -35,6 +35,25 @@ func resolvePassword(o options) (string, error) {
 	return o.pass, nil
 }
 
+// resolveNewPassword decides where the replacement password comes from, when
+// an AP demands a change at first login. Same reasoning as resolvePassword,
+// with one difference: it is never prompted for unasked. Setting a password on
+// every factory AP in a list is a deliberate act, so it happens only when one
+// of the three sources was named explicitly.
+func resolveNewPassword(o options) (string, error) {
+	if o.newPassEnv != "" {
+		v, ok := os.LookupEnv(o.newPassEnv)
+		if !ok {
+			return "", fmt.Errorf("-new-pass-env %s: environment variable is not set", o.newPassEnv)
+		}
+		return v, nil
+	}
+	if o.askNewPass {
+		return promptPassword("New password to set on APs that demand a change: ")
+	}
+	return o.newPass, nil
+}
+
 func promptPassword(prompt string) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
 	fd := int(os.Stdin.Fd())

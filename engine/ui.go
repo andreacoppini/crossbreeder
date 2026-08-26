@@ -181,6 +181,7 @@ type runRequest struct {
 
 	User        string `json:"user"`
 	Pass        string `json:"pass"`
+	NewPass     string `json:"newPass"`
 	AlsoDefault bool   `json:"alsoDefault"`
 	Concurrency int    `json:"concurrency"`
 
@@ -247,7 +248,7 @@ func (u *uiServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	u.mu.Unlock()
 
 	opt := u.opt.merge(req)
-	cfg, notes, err := buildConfig(opt, req.Pass)
+	cfg, notes, err := buildConfig(opt, req.Pass, req.NewPass)
 	if err != nil {
 		u.finish()
 		httpErr(w, err)

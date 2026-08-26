@@ -68,7 +68,7 @@ type JobResult struct {
 
 // buildConfig turns the flag/form options into an engine config, and returns
 // any notes the operator should see about choices made on their behalf.
-func buildConfig(opt options, password string) (ap.Config, []string, error) {
+func buildConfig(opt options, password, newPassword string) (ap.Config, []string, error) {
 	var notes []string
 
 	// A password with no username used to be discarded in silence, and the run
@@ -110,6 +110,7 @@ func buildConfig(opt options, password string) (ap.Config, []string, error) {
 			Proto: opt.fwProto, Host: opt.fwHost, Port: opt.fwPort,
 			User: opt.fwUser, Password: opt.fwPass, Filename: opt.fwFile,
 		},
+		NewPassword:      newPassword,
 		FirmwareWait:     opt.fwWait,
 		Port:             opt.sshPort,
 		ConnectTimeout:   opt.timeout,

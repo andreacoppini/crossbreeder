@@ -43,7 +43,10 @@ function persist() {
   // The password is deliberately not in SAVE: it must not survive on disk. It
   // is held for this browser session only, so a reload mid-job does not empty
   // the field without the operator noticing.
-  try { sessionStorage.setItem('cb-pass', $('pass').value); } catch (e) { /* ignore */ }
+  try {
+    sessionStorage.setItem('cb-pass', $('pass').value);
+    sessionStorage.setItem('cb-newpass', $('newPass').value);
+  } catch (e) { /* ignore */ }
 }
 
 function restore() {
@@ -57,6 +60,8 @@ function restore() {
   try {
     const p = sessionStorage.getItem('cb-pass');
     if (p) $('pass').value = p;
+    const np = sessionStorage.getItem('cb-newpass');
+    if (np) $('newPass').value = np;
   } catch (e) { /* ignore */ }
   hostsChanged();
   actionsChanged();
@@ -130,6 +135,8 @@ for (const id of ['firmware', 'factory', 'reboot', 'command', 'watch']) {
 }
 for (const k of SAVE) $(k)?.addEventListener('change', persist);
 $('pass').addEventListener('input', persist);
+$('newPass').addEventListener('input', persist);
+$('newPass').addEventListener('input', credsChanged);
 $('user').addEventListener('input', credsChanged);
 $('pass').addEventListener('input', credsChanged);
 $('alsoDefault').addEventListener('change', credsChanged);
@@ -151,7 +158,8 @@ function credsChanged() {
   } else {
     el.className = 'hint';
     el.textContent = `Will try "${u}" (${p.length}-character password)` +
-      ($('alsoDefault').checked ? ', then super / sp-admin.' : '.');
+      ($('alsoDefault').checked ? ', then super / sp-admin.' : '.') +
+      ($('newPass').value ? ' An AP demanding a password change will be set to the new password.' : '');
   }
 }
 
@@ -553,7 +561,8 @@ function request() {
   const num = (id) => parseInt($(id).value, 10) || 0;
   return {
     hosts: hostList(),
-    user: $('user').value, pass: $('pass').value, alsoDefault: $('alsoDefault').checked,
+    user: $('user').value, pass: $('pass').value, newPass: $('newPass').value,
+    alsoDefault: $('alsoDefault').checked,
     concurrency: num('concurrency'),
     probe: $('probe').value,
     pingTimeoutMs: num('pingTimeoutMs'), pingRetries: num('pingRetries'),
