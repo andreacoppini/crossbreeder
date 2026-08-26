@@ -50,6 +50,13 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Fixed
 
+- **The Windows binaries report an unmodified source tree again.** The version
+  resource is now generated from a gitignored copy of `versioninfo.json` rather
+  than by rewriting the tracked file, so `go version -m` reports
+  `vcs.modified=false` — the provenance check the README asks people to run.
+  v1.0.2 reported `true`, which was misleading rather than harmful, but the
+  check is only worth anything if it means something.
+
 - **A forced password change no longer kills the run**
   ([#5](https://github.com/andreacoppini/crossbreeder/issues/5)). The CLI login
   matched the password prompt as a substring, so *"Please enter new password:"*
