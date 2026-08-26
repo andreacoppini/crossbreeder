@@ -398,6 +398,7 @@ func login(e *expecter, creds []Credentials, newPass string) (dialect, bool, err
 		actNewPassword
 		actConfirmPassword
 		actRejected
+		actWizard
 		actIncorrect
 		actDenied
 		actPromptZF
@@ -445,6 +446,10 @@ func login(e *expecter, creds []Credentials, newPass string) (dialect, bool, err
 		anywhereFold("does not match"), anywhereFold("too short"),
 		anywhereFold("password is invalid"), anywhereFold("not strong enough"),
 	)
+	// A factory-default Unleashed AP opens a setup wizard before it will take
+	// any command. The original Crossbreeder answered it "no", and so do we:
+	// this tool configures APs through the CLI, never through the wizard.
+	add(actWizard, atEndFold("/no]:"))
 	add(actIncorrect, anywhere("Login incorrect"))
 	add(actDenied, anywhere("Permission denied"))
 	add(actPromptZF, atEnd("rkscli: "))
@@ -485,6 +490,10 @@ func login(e *expecter, creds []Credentials, newPass string) (dialect, bool, err
 			// arrives as its own message and is handled below.
 			if acts[i] == actConfirmPassword {
 				changed = true
+			}
+		case actWizard:
+			if err := e.Send("no"); err != nil {
+				return dialect{}, changed, err
 			}
 		case actRejected:
 			return dialect{}, false, fmt.Errorf("AP rejected the new password: %s", tail(out, 120))
