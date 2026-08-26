@@ -70,6 +70,11 @@ jobs:
           zip -q crossbreeder-plus-macos.zip crossbreeder-plus-macos-universal
           tar czf crossbreeder-plus-linux-amd64.tar.gz crossbreeder-plus-linux-amd64
           tar czf crossbreeder-plus-linux-arm64.tar.gz crossbreeder-plus-linux-arm64
+          # The bare .exe is the convenient download, but plenty of corporate
+          # proxies and browsers refuse to hand over an executable at all. The
+          # zip carries the same file past them; both are published.
+          zip -q crossbreeder-plus-windows-amd64.zip crossbreeder-plus-windows-amd64.exe
+          zip -q crossbreeder-plus-windows-arm64.zip crossbreeder-plus-windows-arm64.exe
           rm -f crossbreeder-plus-darwin-* crossbreeder-plus-linux-amd64 crossbreeder-plus-linux-arm64
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt

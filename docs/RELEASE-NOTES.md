@@ -12,7 +12,9 @@ Download the file for your platform, unzip it, and run it. There is no
 installer and nothing to configure.
 
 - **Windows** — `crossbreeder-plus-windows-amd64.exe` (use `-arm64` for Surface
-  and Snapdragon machines). Double-click it, or run it from a terminal.
+  and Snapdragon machines). Double-click it, or run it from a terminal. If your
+  network or browser refuses to download an `.exe`, take
+  `crossbreeder-plus-windows-amd64.zip` instead — it is the same binary, zipped.
 - **macOS** — `crossbreeder-plus-macos.zip`. One universal binary for Intel and
   Apple Silicon. It is unsigned, so the first launch needs
   `xattr -d com.apple.quarantine crossbreeder-plus-macos-universal`, or
