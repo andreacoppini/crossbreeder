@@ -2,3 +2,10 @@
 /crossbreeder-plus.exe
 /crossbreeder-plus-*
 /dist/
+
+# Windows resources are generated per build from versioninfo.json, so that the
+# version they carry matches the tag rather than whenever they were last
+# committed. Keeping them untracked also keeps the working tree clean at build
+# time, which is what lets the binaries report vcs.modified=false.
+*.syso
+versioninfo.build.json
