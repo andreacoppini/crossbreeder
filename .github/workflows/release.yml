@@ -52,9 +52,11 @@ jobs:
            | .StringFileInfo.ProductVersion = $v' \
             versioninfo.json > versioninfo.stamped.json
           mv versioninfo.stamped.json versioninfo.json
-          for arch in amd64 arm64; do
-            "$(go env GOPATH)/bin/goversioninfo" -64 -o "resource_windows_${arch}.syso" versioninfo.json
-          done
+          # -64 alone emits an amd64 COFF object; windows/arm64 needs -arm too,
+          # or the link fails with "unknown ARM64 relocation type".
+          GVI="$(go env GOPATH)/bin/goversioninfo"
+          "$GVI" -64      -o resource_windows_amd64.syso versioninfo.json
+          "$GVI" -arm -64 -o resource_windows_arm64.syso versioninfo.json
           grep -E '"(File|Product)Version"' versioninfo.json
 
       - name: Build
