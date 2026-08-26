@@ -33,6 +33,30 @@ jobs:
         working-directory: engine
         run: go test ./...
 
+      # The committed .syso files carry whatever version they were generated
+      # with, so a release built from them ships Windows metadata claiming the
+      # wrong version — v1.0.1 went out declaring itself 1.0.0 in Explorer.
+      # Regenerate them from the tag instead.
+      - name: Stamp the Windows version resource
+        working-directory: engine
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          IFS=. read -r MAJ MIN PAT <<< "${VERSION}"
+          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1
+          jq --arg v "$VERSION" --argjson maj "${MAJ}" --argjson min "${MIN}" --argjson pat "${PAT}" \
+            '.FixedFileInfo.FileVersion    = {Major:$maj,Minor:$min,Patch:$pat,Build:0}
+           | .FixedFileInfo.ProductVersion = {Major:$maj,Minor:$min,Patch:$pat,Build:0}
+           | .StringFileInfo.FileVersion    = $v
+           | .StringFileInfo.ProductVersion = $v' \
+            versioninfo.json > versioninfo.stamped.json
+          mv versioninfo.stamped.json versioninfo.json
+          for arch in amd64 arm64; do
+            "$(go env GOPATH)/bin/goversioninfo" -64 -o "resource_windows_${arch}.syso" versioninfo.json
+          done
+          grep -E '"(File|Product)Version"' versioninfo.json
+
       - name: Build
         working-directory: engine
         env:

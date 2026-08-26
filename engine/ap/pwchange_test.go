@@ -350,3 +350,70 @@ func TestConfirmPromptBeatsTheNewPasswordPrompt(t *testing.T) {
 		}
 	}
 }
+
+// The prompt strings below are not a reconstruction: they were recovered from
+// the compiled Crossbreeder.exe, which is a later build than the Xojo source in
+// this repository and does handle a forced password change. It waits on
+// "New password:", "onfirm assword:" and "login:", and answers a "[yes/no]:"
+// wizard prompt with "no". Matching real firmware beats matching a guess.
+func TestPromptStringsFromTheShippedXojoBuild(t *testing.T) {
+	const (
+		login = iota
+		loginPassword
+		newPassword
+		confirm
+		wizard
+	)
+	cases := []struct {
+		text string
+		want int
+	}{
+		{"\r\nPlease login: ", login},
+		{"\r\npassword : ", loginPassword}, // note the space, as the AP prints it
+		{"\r\nNew password:", newPassword}, // no space, as the AP prints it
+		{"\r\nConfirm password:", confirm}, // "onfirm assword:" in the original
+		{"\r\nDo you want to run the wizard [yes/no]: ", wizard},
+	}
+	for _, c := range cases {
+		e := newExpecter(nil, strings.NewReader(c.text), 300*time.Millisecond)
+		i, _, err := e.ExpectPats(
+			atEndFold("login:"),
+			atEndFold("password:"), atEndFold("password :"),
+			atEndFold("new password:"), atEndFold("new password :"),
+			atEndFold("confirm password:"), atEndFold("confirm new password:"),
+			atEndFold("/no]:"),
+		)
+		if err != nil {
+			t.Errorf("%q: no pattern matched: %v", c.text, err)
+			continue
+		}
+		got := login
+		switch {
+		case i >= 1 && i <= 2:
+			got = loginPassword
+		case i >= 3 && i <= 4:
+			got = newPassword
+		case i >= 5 && i <= 6:
+			got = confirm
+		case i == 7:
+			got = wizard
+		}
+		if got != c.want {
+			t.Errorf("%q matched class %d, want %d", c.text, got, c.want)
+		}
+	}
+}
+
+// A factory-default Unleashed AP opens a setup wizard before it will take any
+// command. Left unanswered it stalls the session exactly the way the password
+// prompt did.
+func TestUnleashedSetupWizardIsDeclined(t *testing.T) {
+	e := newExpecter(nil, strings.NewReader("\r\nStart the setup wizard [yes/no]: "), 300*time.Millisecond)
+	i, _, err := e.ExpectPats(atEndFold("password:"), atEndFold("/no]:"), atEnd("rkscli: "))
+	if err != nil {
+		t.Fatalf("wizard prompt not matched: %v", err)
+	}
+	if i != 1 {
+		t.Fatalf("matched pattern %d, want the wizard prompt", i)
+	}
+}

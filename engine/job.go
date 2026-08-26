@@ -68,6 +68,10 @@ type JobResult struct {
 
 // buildConfig turns the flag/form options into an engine config, and returns
 // any notes the operator should see about choices made on their behalf.
+// minNewPasswordLen is the AP's own rule, taken from the original Crossbreeder:
+// "The new password must be 8 characters or longer".
+const minNewPasswordLen = 8
+
 func buildConfig(opt options, password, newPassword string) (ap.Config, []string, error) {
 	var notes []string
 
@@ -84,6 +88,13 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 	}
 	if opt.alsoDefault || len(creds) == 0 {
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
+	}
+
+	// The AP enforces this itself and answers a short one with a re-prompt, so
+	// catching it here turns one config mistake into one message instead of a
+	// rejection against every factory AP in the list.
+	if newPassword != "" && len(newPassword) < minNewPasswordLen {
+		return ap.Config{}, nil, fmt.Errorf("the new password must be %d characters or longer; the AP rejects anything shorter", minNewPasswordLen)
 	}
 
 	if opt.serveDir != "" && !opt.fw {

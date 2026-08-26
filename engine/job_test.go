@@ -63,3 +63,19 @@ func TestAlsoDefaultAppendsTheFactoryPair(t *testing.T) {
 		t.Errorf("credentials = %+v", cfg.Credentials)
 	}
 }
+
+// The AP will not accept a short password, so a run that would have been
+// rejected against every factory AP is stopped once, up front.
+func TestShortNewPasswordIsRejectedBeforeTheRun(t *testing.T) {
+	_, _, err := buildConfig(options{user: "admin"}, "pw", "short")
+	if err == nil {
+		t.Fatal("a 5-character new password was accepted")
+	}
+	if !strings.Contains(err.Error(), "8 characters or longer") {
+		t.Errorf("error = %q, want it to name the length rule", err)
+	}
+
+	if _, _, err := buildConfig(options{user: "admin"}, "pw", "longenough"); err != nil {
+		t.Errorf("a 10-character new password was rejected: %v", err)
+	}
+}
