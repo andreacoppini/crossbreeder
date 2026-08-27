@@ -30,7 +30,7 @@ async function loadDefaults() {
 }
 
 // Everything except the passwords is remembered between sessions.
-const SAVE = [...FIELDS, 'alsoDefault', 'firmware', 'factory', 'reboot', 'command',
+const SAVE = [...FIELDS, 'alsoDefault', 'changePass', 'firmware', 'factory', 'reboot', 'command',
   'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts', 'watch'];
 
 function persist() {
@@ -65,6 +65,7 @@ function restore() {
   } catch (e) { /* ignore */ }
   hostsChanged();
   actionsChanged();
+  changePassChanged();
   credsChanged();
   restoreMode();
   pollServer();
@@ -137,6 +138,13 @@ for (const k of SAVE) $(k)?.addEventListener('change', persist);
 $('pass').addEventListener('input', persist);
 $('newPass').addEventListener('input', persist);
 $('newPass').addEventListener('input', credsChanged);
+$('changePass').addEventListener('change', () => { changePassChanged(); persist(); credsChanged(); });
+
+// Disabling the box rather than clearing it: switching the behaviour off must
+// not cost the operator the password they typed.
+function changePassChanged() {
+  $('newPass').disabled = !$('changePass').checked;
+}
 $('user').addEventListener('input', credsChanged);
 $('pass').addEventListener('input', credsChanged);
 $('alsoDefault').addEventListener('change', credsChanged);
@@ -159,7 +167,9 @@ function credsChanged() {
     el.className = 'hint';
     el.textContent = `Will try "${u}" (${p.length}-character password)` +
       ($('alsoDefault').checked ? ', then super / sp-admin.' : '.') +
-      ($('newPass').value ? ' An AP demanding a password change will be set to the new password.' : '');
+      ($('changePass').checked && $('newPass').value
+        ? ' An AP forcing a password change will be set to the new password.'
+        : ' An AP forcing a password change will be reported and skipped.');
   }
 }
 
@@ -562,7 +572,7 @@ function request() {
   return {
     hosts: hostList(),
     user: $('user').value, pass: $('pass').value, newPass: $('newPass').value,
-    alsoDefault: $('alsoDefault').checked,
+    changePass: $('changePass').checked, alsoDefault: $('alsoDefault').checked,
     concurrency: num('concurrency'),
     probe: $('probe').value,
     pingTimeoutMs: num('pingTimeoutMs'), pingRetries: num('pingRetries'),

@@ -72,6 +72,11 @@ type JobResult struct {
 // "The new password must be 8 characters or longer".
 const minNewPasswordLen = 8
 
+// defaultNewPassword is what the original Crossbreeder set on an AP that
+// demanded a change (varMigrateNewPassword). Keeping it matters for more than
+// familiarity: APs already flashed by that tool are sitting on this password.
+const defaultNewPassword = "Crossbreeder"
+
 func buildConfig(opt options, password, newPassword string) (ap.Config, []string, error) {
 	var notes []string
 
@@ -88,6 +93,13 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 	}
 	if opt.alsoDefault || len(creds) == 0 {
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
+	}
+
+	// Changing the password is a separate switch from what to change it to, as
+	// it was in the original: turning it off has to leave the password in place
+	// rather than making the operator clear the field and lose the value.
+	if !opt.changePass {
+		newPassword = ""
 	}
 
 	// The AP enforces this itself and answers a short one with a re-prompt, so

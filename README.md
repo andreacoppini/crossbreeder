@@ -91,9 +91,16 @@ every shell claims a different set, and an argument is visible in the process
 list. Run `crossbreeder-plus -h` for the rest.
 
 A factory-default AP demands a password change before it will do anything else.
-Give it one with the **New password** field, or `-new-pass` / `-ask-new-pass`,
-and it is set as part of the same run (8 characters or more; the AP refuses
-anything shorter). Leave it empty and those APs are reported
+As in the original Crossbreeder, it is set to **`Crossbreeder`** unless you say
+otherwise, and the run carries on to whatever else you asked for. Change it with
+the **New password** field or `-new-pass` (8 characters or more; the AP refuses
+anything shorter), and switch the behaviour off with the **Change password if
+the AP forces it** tick-box or `-change-pass=false`, which reports such APs and
+skips them instead.
+
+That default is worth knowing even if you never use it: APs already flashed by
+the original tool are sitting on `Crossbreeder` as their password, so it is
+often what belongs in the **AP password** field too. Leave it empty and those APs are reported
 as needing one and skipped, rather than being guessed at.
 
 ## What it does
@@ -123,7 +130,8 @@ as needing one and skipped, rather than being guessed at.
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
-| `*.xojo_*`, `Crossbreeder-*.zip` | the original Crossbreeder, kept for reference |
+| `Crossbreeder.xojo_binary_project` | the original Crossbreeder's current source — the reference for its behaviour |
+| `*.xojo_*`, `Crossbreeder-*.zip` | an older export of it, and the last builds |
 
 Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
 

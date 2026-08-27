@@ -27,7 +27,11 @@ import (
 	"github.com/andreacoppini/crossbreeder/engine/ap"
 )
 
-var version = "1.0.1"
+// version is overwritten at release time with -X main.version. The fallback is
+// deliberately not a number: a literal here silently goes stale — v1.0.2 and
+// v1.0.3 both shipped while this still said 1.0.1 — and a locally built binary
+// claiming to be a release it is not is worse than one that admits what it is.
+var version = "dev"
 
 type options struct {
 	csvPath     string
@@ -39,6 +43,7 @@ type options struct {
 	newPass     string
 	newPassEnv  string
 	askNewPass  bool
+	changePass  bool
 	alsoDefault bool
 	concurrency int
 

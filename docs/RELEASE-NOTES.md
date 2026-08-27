@@ -48,6 +48,14 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
   rather than being guessed at. The AP requires 8 characters or more, which is
   checked once before the run rather than rejected against every AP in the list.
 
+## Changed
+
+- **A forced password change is handled the way the original did.** An AP that
+  demands one is set to `Crossbreeder` unless you say otherwise, and the run
+  carries on. The **Change password if the AP forces it** tick-box
+  (`-change-pass=false`) turns it off without making you clear the password
+  first, matching the original's own switch. Both default on, as they did there.
+
 ## Fixed
 
 - **The Windows binaries report an unmodified source tree again.** The version

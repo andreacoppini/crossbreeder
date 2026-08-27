@@ -67,7 +67,7 @@ func TestAlsoDefaultAppendsTheFactoryPair(t *testing.T) {
 // The AP will not accept a short password, so a run that would have been
 // rejected against every factory AP is stopped once, up front.
 func TestShortNewPasswordIsRejectedBeforeTheRun(t *testing.T) {
-	_, _, err := buildConfig(options{user: "admin"}, "pw", "short")
+	_, _, err := buildConfig(options{user: "admin", changePass: true}, "pw", "short")
 	if err == nil {
 		t.Fatal("a 5-character new password was accepted")
 	}
@@ -75,7 +75,43 @@ func TestShortNewPasswordIsRejectedBeforeTheRun(t *testing.T) {
 		t.Errorf("error = %q, want it to name the length rule", err)
 	}
 
-	if _, _, err := buildConfig(options{user: "admin"}, "pw", "longenough"); err != nil {
+	if _, _, err := buildConfig(options{user: "admin", changePass: true}, "pw", "longenough"); err != nil {
 		t.Errorf("a 10-character new password was rejected: %v", err)
+	}
+}
+
+// The switch is separate from the value, as it was in the original: turning it
+// off must leave the operator's password in the box rather than forcing them to
+// clear it.
+func TestChangePasswordSwitchIsSeparateFromTheValue(t *testing.T) {
+	on, _, err := buildConfig(options{user: "admin", changePass: true}, "pw", defaultNewPassword)
+	if err != nil {
+		t.Fatalf("enabled: %v", err)
+	}
+	if on.NewPassword != defaultNewPassword {
+		t.Errorf("enabled: NewPassword = %q, want %q", on.NewPassword, defaultNewPassword)
+	}
+
+	off, _, err := buildConfig(options{user: "admin", changePass: false}, "pw", defaultNewPassword)
+	if err != nil {
+		t.Fatalf("disabled: %v", err)
+	}
+	if off.NewPassword != "" {
+		t.Errorf("disabled: NewPassword = %q, want it not carried into the run", off.NewPassword)
+	}
+
+	// A short password with the switch off is not an error: it is never used.
+	if _, _, err := buildConfig(options{user: "admin", changePass: false}, "pw", "short"); err != nil {
+		t.Errorf("disabled with a short password should not fail the run: %v", err)
+	}
+}
+
+// The default is the original's, and APs already flashed by that tool carry it.
+func TestDefaultNewPasswordMatchesTheOriginal(t *testing.T) {
+	if defaultNewPassword != "Crossbreeder" {
+		t.Errorf("defaultNewPassword = %q, want %q", defaultNewPassword, "Crossbreeder")
+	}
+	if len(defaultNewPassword) < minNewPasswordLen {
+		t.Errorf("the default is shorter than the AP will accept")
 	}
 }
