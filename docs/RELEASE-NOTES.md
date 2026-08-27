@@ -50,6 +50,10 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **The factory-default `super` / `sp-admin` login is tried by default**, as it
+  was in the original. `-default=false`, or unticking **Also try default**,
+  restricts a run to the credentials given.
+
 - **A firmware change locks out reboot and factory reset.** `fw update` only
   starts the download; the AP fetches the image after the run, so restarting it
   discards the push. The console greys the two boxes out — keeping whatever was

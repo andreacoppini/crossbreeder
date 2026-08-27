@@ -208,3 +208,30 @@ func TestRepeatedResultsDoNotDuplicateRows(t *testing.T) {
 		t.Errorf("the row kept a stale version: %+v", u.results[0])
 	}
 }
+
+// The console and the command line are two front ends onto the same options, so
+// their defaults have to agree. They have drifted before: "Also try default"
+// shipped off in the console while the original had it on, and the same for the
+// forced-password-change switch. This pins the console side to what the flags
+// document, so a change to one surface that forgets the other fails here.
+func TestConsoleDefaultsMatchTheDocumentedOnes(t *testing.T) {
+	b, err := webAssets.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(b)
+
+	for _, c := range []struct{ id, want, why string }{
+		{"alsoDefault", `id="alsoDefault" checked`, "-default is on"},
+		{"changePass", `id="changePass" checked`, "-change-pass is on"},
+		{"newPass", `id="newPass" value="` + defaultNewPassword + `"`, "-new-pass defaults to " + defaultNewPassword},
+		{"firmware", `id="firmware">`, "-fw is off"},
+		{"factory", `id="factory">`, "-factory is off"},
+		{"reboot", `id="reboot">`, "-reboot is off"},
+	} {
+		if !strings.Contains(html, c.want) {
+			t.Errorf("console default for %q does not match the command line (%s); wanted to find %q in index.html",
+				c.id, c.why, c.want)
+		}
+	}
+}

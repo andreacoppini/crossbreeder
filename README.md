@@ -86,6 +86,10 @@ same engine:
 crossbreeder-plus -csv aps.csv -user admin -ask-pass -c 50 -out results.csv
 ```
 
+The factory-default `super`/`sp-admin` login is tried after whatever credentials
+you give, as the original did; `-default=false` or unticking **Also try default**
+restricts a run to the credentials supplied.
+
 Use `-ask-pass` rather than `-pass`: `cmd.exe` eats `^` as an escape character,
 every shell claims a different set, and an argument is visible in the process
 list. Run `crossbreeder-plus -h` for the rest.
