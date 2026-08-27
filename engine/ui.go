@@ -182,6 +182,7 @@ type runRequest struct {
 	User        string `json:"user"`
 	Pass        string `json:"pass"`
 	NewPass     string `json:"newPass"`
+	ChangePass  bool   `json:"changePass"`
 	AlsoDefault bool   `json:"alsoDefault"`
 	Concurrency int    `json:"concurrency"`
 
@@ -410,6 +411,7 @@ func (o options) merge(r runRequest) options {
 	out.user = r.User
 	out.pass = r.Pass
 	out.alsoDefault = r.AlsoDefault
+	out.changePass = r.ChangePass
 	out.fw = r.Firmware
 	out.factory = r.Factory
 	out.reboot = r.Reboot

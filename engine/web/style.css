@@ -124,6 +124,7 @@ textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-heig
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check.disabled { opacity: .45; cursor: not-allowed; }
 .check input { accent-color: var(--accent); }
 .hint { color: var(--muted); font-size: 11px; }
 .hint.warn { color: var(--warn); }

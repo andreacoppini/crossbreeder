@@ -48,8 +48,9 @@
       <label><span>AP username</span><input type="text" id="user" autocomplete="off" spellcheck="false"></label>
       <label><span>AP password</span><input type="password" id="pass" autocomplete="off"></label>
       <label class="check"><input type="checkbox" id="alsoDefault"> Also try default (super / sp-admin)</label>
-      <label><span>New password</span><input type="password" id="newPass" autocomplete="off"></label>
-      <div class="hint">Set on an AP that demands a password change at first login. Must be 8 characters or longer — the AP refuses anything shorter. Leave blank and those APs are reported and skipped instead.</div>
+      <label class="check"><input type="checkbox" id="changePass" checked> Change password if the AP forces it</label>
+      <label><span>New password</span><input type="password" id="newPass" value="Crossbreeder" autocomplete="off"></label>
+      <div class="hint">Set on an AP that demands a password change at first login, as the original Crossbreeder did. Must be 8 characters or longer — the AP refuses anything shorter. Untick and those APs are reported and skipped instead.</div>
       <div class="hint" id="credHint"></div>
     </div>
   </section>
@@ -58,8 +59,9 @@
     <h2>Actions</h2>
     <div class="body">
       <label class="check"><input type="checkbox" id="firmware"> Change firmware</label>
-      <label class="check"><input type="checkbox" id="factory"> Factory reset</label>
-      <label class="check"><input type="checkbox" id="reboot"> Reboot</label>
+      <label class="check" id="factoryRow"><input type="checkbox" id="factory"> Factory reset</label>
+      <label class="check" id="rebootRow"><input type="checkbox" id="reboot"> Reboot</label>
+      <div class="hint" id="fwInterlock" hidden></div>
       <label><span>Run a CLI command</span><input type="text" id="command" placeholder="e.g. set scg ip 10.0.0.5" spellcheck="false"></label>
       <div class="hint">With nothing ticked it only collects inventory.</div>
       <div class="hint warn" id="destructive" hidden></div>

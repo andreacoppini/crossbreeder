@@ -72,6 +72,11 @@ type JobResult struct {
 // "The new password must be 8 characters or longer".
 const minNewPasswordLen = 8
 
+// defaultNewPassword is what the original Crossbreeder set on an AP that
+// demanded a change (varMigrateNewPassword). Keeping it matters for more than
+// familiarity: APs already flashed by that tool are sitting on this password.
+const defaultNewPassword = "Crossbreeder"
+
 func buildConfig(opt options, password, newPassword string) (ap.Config, []string, error) {
 	var notes []string
 
@@ -90,6 +95,13 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 		creds = append(creds, ap.Credentials{User: "super", Password: "sp-admin"})
 	}
 
+	// Changing the password is a separate switch from what to change it to, as
+	// it was in the original: turning it off has to leave the password in place
+	// rather than making the operator clear the field and lose the value.
+	if !opt.changePass {
+		newPassword = ""
+	}
+
 	// The AP enforces this itself and answers a short one with a re-prompt, so
 	// catching it here turns one config mistake into one message instead of a
 	// rejection against every factory AP in the list.
@@ -99,6 +111,18 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 
 	if opt.serveDir != "" && !opt.fw {
 		return ap.Config{}, nil, fmt.Errorf("-serve hosts the images for a firmware push; add -fw")
+	}
+
+	// "fw update" only starts the download; the AP fetches the image in the
+	// background after this session ends. A reboot or a factory reset restarts
+	// it before that finishes and throws the image away, so the two cannot be
+	// combined — the original allowed it and quietly lost the push. Refusing is
+	// better than silently dropping one: on a list of several hundred APs,
+	// doing most of what was asked is worse than doing none of it.
+	if opt.fw && (opt.factory || opt.reboot) {
+		return ap.Config{}, nil, fmt.Errorf(
+			"a firmware change cannot be combined with a reboot or factory reset: " +
+				"the AP downloads the image after the run, and restarting it discards the download")
 	}
 
 	// "set factory" stages the reset; the AP does not act on it until it
