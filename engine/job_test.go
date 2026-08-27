@@ -115,3 +115,40 @@ func TestDefaultNewPasswordMatchesTheOriginal(t *testing.T) {
 		t.Errorf("the default is shorter than the AP will accept")
 	}
 }
+
+// "fw update" only starts the download. A reboot or factory reset restarts the
+// AP before it finishes and throws the image away, so the combination is
+// refused rather than half-performed across a whole site list.
+func TestFirmwareCannotBeCombinedWithRebootOrFactory(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		opt  options
+	}{
+		{"reboot", options{user: "u", fw: true, reboot: true}},
+		{"factory", options{user: "u", fw: true, factory: true}},
+		{"both", options{user: "u", fw: true, reboot: true, factory: true}},
+	} {
+		_, _, err := buildConfig(c.opt, "pw", "")
+		if err == nil {
+			t.Errorf("%s: the combination was accepted", c.name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "discards the download") {
+			t.Errorf("%s: error = %q, want it to explain why", c.name, err)
+		}
+	}
+
+	// Each on its own is untouched.
+	for _, c := range []struct {
+		name string
+		opt  options
+	}{
+		{"firmware alone", options{user: "u", fw: true, fwHost: "10.0.0.1", fwFile: "img.rcks"}},
+		{"reboot alone", options{user: "u", reboot: true}},
+		{"factory alone", options{user: "u", factory: true}},
+	} {
+		if _, _, err := buildConfig(c.opt, "pw", ""); err != nil {
+			t.Errorf("%s was rejected: %v", c.name, err)
+		}
+	}
+}

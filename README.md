@@ -111,7 +111,9 @@ as needing one and skipped, rather than being guessed at.
   out to re-run later.
 - **Works the APs in parallel** — inventory, firmware, factory reset, reboot, or
   any AP CLI command, across ZoneFlex and Unleashed, at whatever concurrency the
-  site can take.
+  site can take. A firmware change cannot be combined with a reboot or a factory
+  reset: `fw update` only *starts* the download, so restarting the AP would throw
+  the image away.
 - **Hosts the firmware itself.** A push needs nothing installed beyond this
   binary: it serves the images, works out which of your addresses the APs can
   actually reach, and shows what each one is downloading.

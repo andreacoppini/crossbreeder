@@ -113,6 +113,18 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 		return ap.Config{}, nil, fmt.Errorf("-serve hosts the images for a firmware push; add -fw")
 	}
 
+	// "fw update" only starts the download; the AP fetches the image in the
+	// background after this session ends. A reboot or a factory reset restarts
+	// it before that finishes and throws the image away, so the two cannot be
+	// combined — the original allowed it and quietly lost the push. Refusing is
+	// better than silently dropping one: on a list of several hundred APs,
+	// doing most of what was asked is worse than doing none of it.
+	if opt.fw && (opt.factory || opt.reboot) {
+		return ap.Config{}, nil, fmt.Errorf(
+			"a firmware change cannot be combined with a reboot or factory reset: " +
+				"the AP downloads the image after the run, and restarting it discards the download")
+	}
+
 	// "set factory" stages the reset; the AP does not act on it until it
 	// reboots, so a factory reset on its own leaves the AP exactly as it was.
 	reboot := opt.reboot

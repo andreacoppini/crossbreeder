@@ -105,16 +105,43 @@ $('file').onchange = (e) => {
 
 /* ---------- actions ---------- */
 
+// A box locked out by the firmware interlock keeps its tick but does not count:
+// reading .checked alone would confirm and submit an action that will not run.
+const acting = (id) => $(id).checked && !$(id).disabled;
+
 function destructiveList() {
   const out = [];
-  if ($('firmware').checked) out.push('push new firmware');
-  if ($('factory').checked) out.push('factory reset (which forces a reboot)');
-  if ($('reboot').checked && !$('factory').checked) out.push('reboot');
+  if (acting('firmware')) out.push('push new firmware');
+  if (acting('factory')) out.push('factory reset (which forces a reboot)');
+  if (acting('reboot') && !acting('factory')) out.push('reboot');
   if ($('command').value.trim()) out.push(`run: ${$('command').value.trim()}`);
   return out;
 }
 
+// A firmware push and a reboot cancel each other out: "fw update" only starts
+// the download, which the AP does in the background, so anything that drops the
+// session and restarts it throws the image away. A factory reset is worse — it
+// takes effect on the next boot and takes the firmware settings with it. The
+// original let you tick all three and quietly lost the push; here the two are
+// locked out while a firmware change is selected.
+//
+// They are disabled rather than cleared, so whatever was ticked comes back when
+// the firmware box is unticked.
+function firmwareInterlock() {
+  const on = $('firmware').checked;
+  for (const id of ['factory', 'reboot']) {
+    $(id).disabled = on;
+    $(id + 'Row').classList.toggle('disabled', on);
+  }
+  const note = $('fwInterlock');
+  note.hidden = !on;
+  note.textContent = on
+    ? 'Factory reset and reboot are unavailable during a firmware change: the AP downloads the image after this run, and restarting it would discard the download.'
+    : '';
+}
+
 function actionsChanged() {
+  firmwareInterlock();
   const d = destructiveList();
   const el = $('destructive');
   el.hidden = d.length === 0;
@@ -577,8 +604,8 @@ function request() {
     probe: $('probe').value,
     pingTimeoutMs: num('pingTimeoutMs'), pingRetries: num('pingRetries'),
     pingConcurrency: num('pingConcurrency'),
-    firmware: $('firmware').checked, factory: $('factory').checked,
-    reboot: $('reboot').checked, command: $('command').value.trim(),
+    firmware: acting('firmware'), factory: acting('factory'),
+    reboot: acting('reboot'), command: $('command').value.trim(),
     serve: $('firmware').checked && internalMode(),
     serveDir: $('serveDir').value, serveIp: $('serveIp').value, servePort: num('servePort'),
     fwProto: $('fwProto').value, fwHost: $('fwHost').value, fwPort: $('fwPort').value,

@@ -50,6 +50,12 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **A firmware change locks out reboot and factory reset.** `fw update` only
+  starts the download; the AP fetches the image after the run, so restarting it
+  discards the push. The console greys the two boxes out — keeping whatever was
+  ticked, for when the firmware box is cleared again — and the command line
+  refuses the combination rather than silently dropping one of them.
+
 - **A forced password change is handled the way the original did.** An AP that
   demands one is set to `Crossbreeder` unless you say otherwise, and the run
   carries on. The **Change password if the AP forces it** tick-box
