@@ -27,6 +27,22 @@ async function loadDefaults() {
     if (el.type === 'checkbox') el.checked = !!d[k]; else el.value = d[k];
   }
   restore();
+  checkForUpdate();
+}
+
+// Asked for after the page has rendered, never before: a blocked or slow GitHub
+// must not delay the console, and if the answer never arrives the notice simply
+// never appears.
+async function checkForUpdate() {
+  try {
+    const u = await (await fetch('/api/update')).json();
+    if (!u || !u.available) return;
+    const el = $('update');
+    el.textContent = `v${u.latest} available`;
+    el.href = u.url || 'https://github.com/andreacoppini/crossbreeder/releases/latest';
+    el.title = `You are running ${u.current}. Click to open the release page.`;
+    el.hidden = false;
+  } catch (e) { /* offline, blocked, or GitHub is having a day — say nothing */ }
 }
 
 // Everything except the passwords is remembered between sessions.

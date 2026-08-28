@@ -53,6 +53,7 @@ func parseFlags() options {
 	flag.BoolVar(&o.ui, "ui", false, "open the browser console (the default when the program is started with no arguments)")
 	flag.IntVar(&o.uiPort, "ui-port", 0, "port for the browser console (0 picks a free one); it is bound to localhost only")
 	flag.BoolVar(&o.showVers, "version", false, "print version and exit")
+	flag.BoolVar(&o.noUpdate, "no-update-check", false, "do not ask GitHub whether a newer version exists (also CROSSBREEDER_NO_UPDATE_CHECK=1)")
 	flag.Parse()
 	return o
 }

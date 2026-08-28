@@ -90,6 +90,18 @@ The factory-default `super`/`sp-admin` login is tried after whatever credentials
 you give, as the original did; `-default=false` or unticking **Also try default**
 restricts a run to the credentials supplied.
 
+### Update check
+
+On launch it asks GitHub once whether a newer release exists, and says so — a
+line after the run on the command line, a small badge beside the version in the
+console. It never blocks or delays anything, says nothing at all when it fails,
+and caches the answer for a day so a site behind one address does not hammer
+GitHub's rate limit.
+
+Turn it off with `-no-update-check`, or `CROSSBREEDER_NO_UPDATE_CHECK=1` in the
+environment to switch it off for everyone at a site. It is the only connection
+the tool makes that is not to an AP or to your own firmware server.
+
 Use `-ask-pass` rather than `-pass`: `cmd.exe` eats `^` as an escape character,
 every shell claims a different set, and an argument is visible in the process
 list. Run `crossbreeder-plus -h` for the rest.

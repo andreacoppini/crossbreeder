@@ -68,6 +68,7 @@ func serveUI(opt options) error {
 	mux.HandleFunc("/api/ips", u.handleIPs)
 	mux.HandleFunc("/api/browse", u.handleBrowse)
 	mux.HandleFunc("/api/firmware", u.handleFirmware)
+	mux.HandleFunc("/api/update", u.handleUpdate)
 
 	fmt.Printf("Crossbreeder Plus %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
 	openBrowser(url)
@@ -326,6 +327,24 @@ func (u *uiServer) handleDefaults(w http.ResponseWriter, r *http.Request) {
 		"serveWaitS":      int(u.opt.serveWait / time.Second),
 		"serveDir":        workingDir(),
 		"version":         version,
+	})
+}
+
+// handleUpdate answers the console's own question about whether a newer release
+// exists. It is a separate endpoint rather than part of /api/defaults so that a
+// slow or blocked GitHub cannot hold up the page: the console renders first and
+// asks afterwards, and simply shows nothing if the answer never comes.
+func (u *uiServer) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	info, ok := checkForUpdate(r.Context(), releasesAPI, version, !u.opt.noUpdate)
+	if !ok {
+		writeJSON(w, map[string]any{"available": false})
+		return
+	}
+	writeJSON(w, map[string]any{
+		"available": true,
+		"latest":    info.Latest,
+		"current":   version,
+		"url":       info.URL,
 	})
 }
 

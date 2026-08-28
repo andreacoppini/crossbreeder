@@ -44,6 +44,7 @@ type options struct {
 	newPassEnv  string
 	askNewPass  bool
 	changePass  bool
+	noUpdate    bool
 	alsoDefault bool
 	concurrency int
 
@@ -120,6 +121,11 @@ func run(opt options) error {
 			filepath.Base(os.Args[0]))
 	}
 
+	// Started here and read at the end: the check must never be something the
+	// operator waits for, and by the time a sweep has finished it has long
+	// since resolved or given up.
+	update := startUpdateCheck(opt)
+
 	hosts, err := loadHosts(opt.csvPath)
 	if err != nil {
 		return fmt.Errorf("cannot read %s: %w", opt.csvPath, err)
@@ -164,7 +170,11 @@ func run(opt options) error {
 	if opt.deadOut != "" && len(out.Dead) > 0 {
 		fmt.Fprintf(os.Stderr, "%d silent addresses written to %s\n", len(out.Dead), opt.deadOut)
 	}
-	return writeResults(opt.out, out.Results)
+	if err := writeResults(opt.out, out.Results); err != nil {
+		return err
+	}
+	reportUpdate(update, os.Stderr)
+	return nil
 }
 
 // cliPrinter renders run events the way the command line always has.
