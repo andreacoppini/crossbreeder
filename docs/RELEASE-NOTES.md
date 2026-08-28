@@ -50,6 +50,16 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **It now tells you when a newer version exists.** One request to GitHub on
+  launch, the answer cached for a day, reported as a line after the run or a
+  badge in the console. It never delays a run and stays silent on any failure —
+  offline, behind a proxy, rate-limited, or a captive portal. `-no-update-check`
+  or `CROSSBREEDER_NO_UPDATE_CHECK=1` switches it off.
+
+- **The factory-default `super` / `sp-admin` login is tried by default**, as it
+  was in the original. `-default=false`, or unticking **Also try default**,
+  restricts a run to the credentials given.
+
 - **A firmware change locks out reboot and factory reset.** `fw update` only
   starts the download; the AP fetches the image after the run, so restarting it
   discards the push. The console greys the two boxes out — keeping whatever was
