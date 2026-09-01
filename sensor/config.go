@@ -553,3 +553,41 @@ func (c Config) Redacted() Config {
 	}
 	return out
 }
+
+// restoreSecrets copies back any secret that came in redacted, so a
+// configuration edited in the dashboard — which is only ever shown the
+// redacted form — does not overwrite a passphrase with asterisks.
+func (c *Config) restoreSecrets(old Config) {
+	const mask = "********"
+	if c.Upstream.Token == mask {
+		c.Upstream.Token = old.Upstream.Token
+	}
+	if c.Alerts.Slack == mask {
+		c.Alerts.Slack = old.Alerts.Slack
+	}
+	if c.Alerts.Email != nil && c.Alerts.Email.Password == mask && old.Alerts.Email != nil {
+		c.Alerts.Email.Password = old.Alerts.Email.Password
+	}
+	previous := map[string]wifi.Profile{}
+	for _, n := range old.Networks {
+		previous[n.Name] = n.Profile
+	}
+	for i, n := range c.Networks {
+		was, ok := previous[n.Name]
+		if !ok {
+			continue
+		}
+		if n.Profile.PSK == mask {
+			c.Networks[i].Profile.PSK = was.PSK
+		}
+		if n.Profile.Password == mask {
+			c.Networks[i].Profile.Password = was.Password
+		}
+		if n.Profile.WEPKey == mask {
+			c.Networks[i].Profile.WEPKey = was.WEPKey
+		}
+		if n.Profile.PrivateKeyPasswd == mask {
+			c.Networks[i].Profile.PrivateKeyPasswd = was.PrivateKeyPasswd
+		}
+	}
+}

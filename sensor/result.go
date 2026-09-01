@@ -91,8 +91,13 @@ func (m Measurement) String() string {
 func formatValue(v float64, unit string) string {
 	switch unit {
 	case "ms":
-		if v >= 1000 {
+		switch {
+		case v >= 1000:
 			return fmt.Sprintf("%.2fs", v/1000)
+		case v < 10:
+			// A gateway on the same switch answers in tenths of a
+			// millisecond, and rounding that to "0ms" loses the measurement.
+			return fmt.Sprintf("%.1fms", v)
 		}
 		return fmt.Sprintf("%.0fms", v)
 	case "dBm", "dB", "%":

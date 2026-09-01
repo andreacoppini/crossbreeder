@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crossbreeder Sensor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">Crossbreeder Sensor <span id="ver"></span></div>
+  <div class="who"><b id="sensorName">…</b><i id="sensorSite"></i></div>
+  <div class="phase" id="phase">starting</div>
+  <div class="counters">
+    <div class="counter"><b id="cScore">–</b><i>health</i></div>
+    <div class="counter err"><b id="cIssues">0</b><i>open issues</i></div>
+  </div>
+  <button id="run" class="primary">Test now</button>
+  <button id="exportCsv">CSV</button>
+</header>
+
+<div class="app">
+  <aside>
+    <h2>Networks</h2>
+    <div id="networks" class="netlist"></div>
+
+    <h2>Open issues</h2>
+    <div id="issues" class="issues"><p class="muted">Nothing is wrong.</p></div>
+
+    <h2>Tools</h2>
+    <div class="tools">
+      <button id="scan">Scan the air</button>
+      <label>Trace to
+        <input id="traceTarget" type="text" placeholder="1.1.1.1" spellcheck="false">
+      </label>
+      <button id="trace">Run traceroute</button>
+      <label>Capture on
+        <input id="capIface" type="text" placeholder="eth0" spellcheck="false">
+      </label>
+      <label>for
+        <input id="capSeconds" type="number" value="30" min="1" max="600">
+        seconds
+      </label>
+      <button id="capture">Download a capture</button>
+    </div>
+  </aside>
+
+  <main>
+    <section class="cards" id="cards"></section>
+
+    <section class="panel">
+      <div class="tabs">
+        <button class="tab on" data-tab="tests">Latest pass</button>
+        <button class="tab" data-tab="history">History</button>
+        <button class="tab" data-tab="tools">Tool output</button>
+        <button class="tab" data-tab="log">Log</button>
+      </div>
+      <div class="tabbody" id="tab-tests">
+        <table class="grid">
+          <thead><tr><th>Service</th><th>Test</th><th>Result</th><th class="num">Value</th><th>Detail</th></tr></thead>
+          <tbody id="tests"></tbody>
+        </table>
+      </div>
+      <div class="tabbody" id="tab-history" hidden>
+        <div class="chartwrap"><canvas id="chart" height="150"></canvas></div>
+        <table class="grid">
+          <thead><tr><th>Time</th><th>Network</th><th>Health</th><th>Worst</th><th>Took</th></tr></thead>
+          <tbody id="history"></tbody>
+        </table>
+      </div>
+      <div class="tabbody" id="tab-tools" hidden><pre id="toolout" class="out">Nothing has been run yet.</pre></div>
+      <div class="tabbody" id="tab-log" hidden><pre id="log" class="out"></pre></div>
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
