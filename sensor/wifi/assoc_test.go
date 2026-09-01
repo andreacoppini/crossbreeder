@@ -14,7 +14,7 @@ func TestConnectTimesEachPhase(t *testing.T) {
 	f.reply("ADD_NETWORK", "3")
 	f.reply("STATUS", "bssid=b8:27:eb:aa:bb:cc\nfreq=5180\nssid=Campus-Secure\nkey_mgmt=WPA2/IEEE 802.1X/EAP\nwpa_state=COMPLETED\n")
 	f.reply("SIGNAL_POLL", "RSSI=-58\nNOISE=-95\nFREQUENCY=5180\nLINKSPEED=400\n")
-	f.onCommand = func(f *fakeSupplicant, cmd string) {
+	f.onCommandFunc(func(f *fakeSupplicant, cmd string) {
 		if strings.HasPrefix(cmd, "SELECT_NETWORK") {
 			f.emitSequence(15*time.Millisecond,
 				"CTRL-EVENT-SCAN-STARTED",
@@ -27,7 +27,7 @@ func TestConnectTimesEachPhase(t *testing.T) {
 				"CTRL-EVENT-CONNECTED - Connection to b8:27:eb:aa:bb:cc completed",
 			)
 		}
-	}
+	})
 	c := dialFake(t, f, "wlan0")
 
 	a := c.Connect(context.Background(), Profile{
@@ -75,11 +75,11 @@ func TestConnectClassifiesFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFakeSupplicant(t, "wlan0")
 			f.reply("ADD_NETWORK", "0")
-			f.onCommand = func(f *fakeSupplicant, cmd string) {
+			f.onCommandFunc(func(f *fakeSupplicant, cmd string) {
 				if strings.HasPrefix(cmd, "SELECT_NETWORK") {
 					f.emitSequence(10*time.Millisecond, tc.event)
 				}
-			}
+			})
 			c := dialFake(t, f, "wlan0")
 			a := c.Connect(context.Background(), Profile{SSID: "Guest", PSK: "letmein1"}, 3*time.Second)
 			if a.OK() {
@@ -128,11 +128,11 @@ func TestConnectRefusesAMisconfiguredProfile(t *testing.T) {
 func TestRoamTimesTheHandover(t *testing.T) {
 	f := newFakeSupplicant(t, "wlan0")
 	f.reply("STATUS", "bssid=b8:27:eb:99:88:77\nfreq=5200\nssid=Campus-Secure\nwpa_state=COMPLETED\n")
-	f.onCommand = func(f *fakeSupplicant, cmd string) {
+	f.onCommandFunc(func(f *fakeSupplicant, cmd string) {
 		if strings.HasPrefix(cmd, "ROAM") {
 			f.emitSequence(20*time.Millisecond, "CTRL-EVENT-CONNECTED - Connection to b8:27:eb:99:88:77 completed")
 		}
-	}
+	})
 	c := dialFake(t, f, "wlan0")
 
 	took, landed, err := c.Roam(context.Background(), "b8:27:eb:99:88:77", 3*time.Second)

@@ -23,6 +23,14 @@ func openRaw(iface string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("raw socket (the sensor needs privilege for this): %w", err)
 	}
+	// A receive timeout at the socket level, as well as the deadline set on
+	// each read: an fd the runtime poller will not take does not support
+	// deadlines, and a capture that cannot time out never ends.
+	timeout := unix.Timeval{Usec: 500000}
+	if err := unix.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &timeout); err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("receive timeout: %w", err)
+	}
 	if iface != "" {
 		ifi, err := net.InterfaceByName(iface)
 		if err != nil {

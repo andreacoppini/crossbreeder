@@ -90,6 +90,12 @@ func (c *Ctrl) Scan(ctx context.Context, wait time.Duration) ([]BSS, error) {
 	if wait <= 0 {
 		wait = 4 * time.Second
 	}
+	// The event connection belongs to this scan and nothing else: without a
+	// scope of its own it would live as long as the caller's context, which
+	// for a scheduled pass is the life of the process — one leaked socket per
+	// scan, for months.
+	ctx, cancel := context.WithTimeout(ctx, wait+5*time.Second)
+	defer cancel()
 	events, evErr := c.eventsForScan(ctx)
 	_, err := c.Request("SCAN")
 	if err != nil && !strings.Contains(err.Error(), "FAIL-BUSY") {

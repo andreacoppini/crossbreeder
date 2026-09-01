@@ -2,6 +2,7 @@ package wifi
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -175,11 +176,11 @@ func TestScanFallsBackToTheExistingTableWhenBusy(t *testing.T) {
 func TestScanWaitsForResultsEvent(t *testing.T) {
 	f := newFakeSupplicant(t, "wlan0")
 	f.reply("SCAN_RESULTS", scanTable)
-	f.onCommand = func(f *fakeSupplicant, cmd string) {
+	f.onCommandFunc(func(f *fakeSupplicant, cmd string) {
 		if cmd == "SCAN" {
 			f.emitSequence(20*time.Millisecond, "CTRL-EVENT-SCAN-RESULTS ")
 		}
-	}
+	})
 	c := dialFake(t, f, "wlan0")
 
 	start := time.Now()
@@ -280,4 +281,49 @@ func TestRedactedKeepsSecretsOffTheScreen(t *testing.T) {
 	if p.PSK != "supersecret" {
 		t.Error("redaction modified the original profile")
 	}
+}
+
+// A sensor scans every five minutes for months. Each scan used to open a
+// control connection that only closed when the caller's context did, which for
+// a scheduled pass is never.
+func TestRepeatedScansDoNotLeakSockets(t *testing.T) {
+	f := newFakeSupplicant(t, "wlan0")
+	f.reply("SCAN_RESULTS", scanTable)
+	f.onCommandFunc(func(f *fakeSupplicant, cmd string) {
+		if cmd == "SCAN" {
+			f.emitSequence(5*time.Millisecond, "CTRL-EVENT-SCAN-RESULTS ")
+		}
+	})
+	c := dialFake(t, f, "wlan0")
+
+	before := countTempSockets(t)
+	for i := 0; i < 5; i++ {
+		if _, err := c.Scan(context.Background(), 500*time.Millisecond); err != nil {
+			t.Fatalf("scan %d: %v", i, err)
+		}
+	}
+	// The connections close as their scan's context ends, which may be a
+	// moment after the scan returns.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && countTempSockets(t) > before {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if after := countTempSockets(t); after > before {
+		t.Fatalf("five scans left %d control sockets behind", after-before)
+	}
+}
+
+func countTempSockets(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		t.Skipf("cannot read the temporary directory: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "cbsensor-") {
+			n++
+		}
+	}
+	return n
 }

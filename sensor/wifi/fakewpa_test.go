@@ -111,6 +111,15 @@ func (f *fakeSupplicant) emitSequence(step time.Duration, events ...string) {
 	}
 }
 
+// onCommandFunc sets the hook under the lock: the serve goroutine is already
+// running, and a test that sets it afterwards would otherwise be writing what
+// that goroutine reads.
+func (f *fakeSupplicant) onCommandFunc(fn func(*fakeSupplicant, string)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCommand = fn
+}
+
 func (f *fakeSupplicant) reply(cmd, reply string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

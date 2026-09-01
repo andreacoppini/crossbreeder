@@ -258,8 +258,7 @@ type Storage struct {
 // switched on: it tests the wired port it is plugged into, resolves and
 // fetches over it, and keeps a fortnight of history.
 func DefaultConfig() Config {
-	yes, no := true, false
-	_ = no
+	yes := true
 	return Config{
 		Sensor: SensorConfig{
 			Name:              defaultName(),
@@ -316,6 +315,14 @@ func DefaultThresholds() Thresholds {
 		LossWarnPct:     1,
 		LossFailPct:     5,
 	}
+}
+
+// capitalise names an unnamed network after its kind: "Wired", "Wifi".
+func capitalise(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func defaultName() string {
@@ -389,7 +396,7 @@ func (c *Config) applyDefaults() {
 			if ssid := c.Networks[i].Profile.SSID; ssid != "" {
 				c.Networks[i].Name = ssid
 			} else {
-				c.Networks[i].Name = strings.Title(c.Networks[i].Kind)
+				c.Networks[i].Name = capitalise(c.Networks[i].Kind)
 			}
 		}
 	}

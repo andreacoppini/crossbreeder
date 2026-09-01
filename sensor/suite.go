@@ -510,9 +510,11 @@ func (r *Runner) runWeb(ctx context.Context, res *SuiteResult, n Network, resolv
 		res.Add(m)
 
 		// A certificate about to expire on an application the site depends on
-		// is a finding today, not an outage next month.
-		if days := out.DaysToCertExpiry(); days != 0 && out.CertExpiry.After(time.Time{}) {
-			if days <= th.CertWarnDays {
+		// is a finding today, not an outage next month. Zero days left is the
+		// most urgent case there is, so the test is on the expiry being known,
+		// not on the count being non-zero.
+		if !out.CertExpiry.IsZero() {
+			if days := out.DaysToCertExpiry(); days <= th.CertWarnDays {
 				res.Add(certMeasurement(name, target.URL, days, th))
 			}
 		}
