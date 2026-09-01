@@ -498,3 +498,28 @@ func TestRunWithoutARadioReportsTheReason(t *testing.T) {
 		t.Fatalf("aborted = %q", res.Aborted)
 	}
 }
+
+func TestRunChecksPlainTCPServices(t *testing.T) {
+	// A service that is listening, and one that is not.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("no TCP loopback: %v", err)
+	}
+	defer ln.Close()
+
+	runner, cfg := testRunner(t, nil, dhcpScope(t, false))
+	runner.cfg = *cfg
+	res := runner.Run(context.Background(), Network{
+		Name: "Wired", Kind: "wired",
+		Tests: TestPlan{Ports: []PortTarget{
+			{Name: "File server", Address: ln.Addr().String()},
+			{Name: "Print server", Address: "127.0.0.1:9"},
+		}},
+	})
+	if m, ok := find(res, "File server"); !ok || m.Status != StatusOK {
+		t.Errorf("a listening service = %+v", m)
+	}
+	if m, ok := find(res, "Print server"); !ok || m.Status != StatusFail {
+		t.Errorf("a closed port = %+v", m)
+	}
+}

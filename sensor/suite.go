@@ -142,6 +142,7 @@ func (r *Runner) Run(ctx context.Context, network Network) SuiteResult {
 	r.runInternet(ctx, &res, network, th)
 	r.runPortal(ctx, &res, network)
 	r.runWeb(ctx, &res, network, resolvers, th)
+	r.runPorts(ctx, &res, network, th)
 	r.runCertificates(ctx, &res, network, th)
 	r.runTraceroute(ctx, &res, network)
 	r.runVoIP(ctx, &res, network, th)
@@ -515,6 +516,24 @@ func (r *Runner) runWeb(ctx context.Context, res *SuiteResult, n Network, resolv
 				res.Add(certMeasurement(name, target.URL, days, th))
 			}
 		}
+	}
+}
+
+// runPorts checks the services that are not web pages — a print server, a
+// file share, the application nobody remembers the port of until it stops
+// answering.
+func (r *Runner) runPorts(ctx context.Context, res *SuiteResult, n Network, th Thresholds) {
+	for _, port := range n.Tests.Ports {
+		out := netprobe.TCPConnect(ctx, port.Address, r.pingTimeout)
+		name := port.Name
+		if name == "" {
+			name = "connect to " + port.Address
+		}
+		res.Add(Measurement{
+			Test: name, Service: ServiceApplications, Target: port.Address,
+			Status: statusOrFail(out.Err, judgeDuration(out.RTT, th.WebWarn.D(), th.WebFail.D())),
+			Value:  Millis(out.RTT), Unit: "ms", Error: errText(out.Err),
+		})
 	}
 }
 

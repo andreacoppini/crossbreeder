@@ -526,6 +526,7 @@ func printExample() {
 			Internet:   []string{"1.1.1.1", "8.8.8.8"},
 			Apps:       []string{"Microsoft 365", "Zoom", "Salesforce"},
 			Web:        []WebTarget{{Name: "Intranet", URL: "https://intranet.example.com/health", ExpectStatus: 200}},
+			Ports:      []PortTarget{{Name: "File server", Address: "files.example.com:445"}},
 			Traceroute: []string{"outlook.office365.com"},
 			VoIP:       &VoIPTarget{Reflector: "collector.example.com:52416", DSCP: 46, Codec: "G.711"},
 			Throughput: &ThroughputTarget{

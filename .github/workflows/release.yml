@@ -27,10 +27,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-          cache-dependency-path: engine/go.sum
+          cache-dependency-path: |
+            engine/go.sum
+            sensor/go.sum
 
       - name: Test
         working-directory: engine
+        run: go test ./...
+
+      - name: Test the sensor
+        working-directory: sensor
         run: go test ./...
 
       # The Windows resources are generated here rather than committed, for two
@@ -93,6 +99,30 @@ jobs:
           build linux   amd64 ""
           build linux   arm64 ""
 
+      # The sensor is a Linux appliance, but it builds and runs everywhere, and
+      # a macOS or Windows build is what somebody commissioning a site runs
+      # from a laptop. The Linux binaries keep their plain names: that is what
+      # the installer downloads and what the sensor's own -update looks for.
+      - name: Build the sensor
+        working-directory: sensor
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+
+          build() { # os arch ext
+            GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "$LDFLAGS" \
+              -o "../dist/crossbreeder-sensor-$1-$2$3" .
+          }
+          build linux   amd64 ""
+          build linux   arm64 ""
+          build linux   arm   ""
+          build darwin  arm64 ""
+          build windows amd64 .exe
+
       - name: Make the macOS universal binary
         run: python3 scripts/make-universal.py
           dist/crossbreeder-plus-darwin-amd64
@@ -107,6 +137,7 @@ jobs:
           zip -q crossbreeder-plus-macos.zip crossbreeder-plus-macos-universal
           tar czf crossbreeder-plus-linux-amd64.tar.gz crossbreeder-plus-linux-amd64
           tar czf crossbreeder-plus-linux-arm64.tar.gz crossbreeder-plus-linux-arm64
+          chmod +x crossbreeder-sensor-*
           # The bare .exe is the convenient download, but plenty of corporate
           # proxies and browsers refuse to hand over an executable at all. The
           # zip carries the same file past them; both are published.

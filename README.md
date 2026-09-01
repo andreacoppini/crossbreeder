@@ -145,13 +145,42 @@ as needing one and skipped, rather than being guessed at.
 | Path | |
 |---|---|
 | `engine/` | Crossbreeder Plus — the Go source, tests and browser console |
+| `sensor/` | Crossbreeder Sensor — the Raspberry Pi network experience sensor |
+| `pi/` | what to build a sensor on, and the installer and units that set it up |
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
+| `docs/SENSOR-FEATURE-MAP.md` | the sensor measured against Aruba UXI, feature by feature |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
 | `Crossbreeder.xojo_binary_project` | the original Crossbreeder's current source — the reference for its behaviour |
 | `*.xojo_*`, `Crossbreeder-*.zip` | an older export of it, and the last builds |
 
 Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
+
+## Crossbreeder Sensor
+
+The same repository now holds the other end of the problem. Crossbreeder Plus
+drives access points; **Crossbreeder Sensor** reports what the network is
+actually like from the floor — the evidence you cannot win the argument
+without.
+
+It is a Raspberry Pi that behaves like a client: it associates to each SSID the
+way a laptop does, times every step of getting on, then tests DHCP, the
+gateway, DNS, the internet, the applications the site depends on, and whether a
+call would sound like anything. It scores each layer, and when something breaks
+it names the failure furthest down the stack as the cause rather than reporting
+nine consequences of it.
+
+```
+curl -fsSL https://raw.githubusercontent.com/andreacoppini/crossbreeder/master/pi/install.sh | sudo sh
+```
+
+It is one static binary with its dashboard embedded, and the same binary is the
+collector for a fleet. This sets out to replace Aruba UXI, and
+[`docs/SENSOR-FEATURE-MAP.md`](docs/SENSOR-FEATURE-MAP.md) says feature by
+feature how far it gets — including where it does not.
+
+- [`sensor/README.md`](sensor/README.md) — what it does, how to configure it
+- [`pi/README.md`](pi/README.md) — what to build it on, and why that radio
 
 ## The original Crossbreeder
 
@@ -165,6 +194,9 @@ filenames.
 
 - The Unleashed dialect and pre-2015 ZoneFlex firmware (`-legacy`) have been
   exercised against a simulated AP, not real hardware.
+- The sensor's radio path has met a fake wpa_supplicant, not a real adapter and
+  a real AP; everything else in it has been run end to end. The feature map
+  says which is which.
 - A firmware push is only ever *started* by the tool. The AP downloads and
   reboots on its own schedule, which is what the re-scan is there to follow.
 - The binaries are unsigned on both Windows and macOS.

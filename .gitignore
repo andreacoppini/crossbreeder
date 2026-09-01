@@ -13,3 +13,9 @@ Debug*/Debug*\ Libs
 # Release artefacts. These are built by .github/workflows/release.yml and
 # attached to the GitHub release; they have no business in the repository.
 /dist/
+
+# Local builds of the two Go programs.
+/engine/crossbreeder-plus*
+/sensor/crossbreeder-sensor*
+/engine/versioninfo.build.json
+/engine/*.syso

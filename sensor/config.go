@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,6 +112,7 @@ type TestPlan struct {
 	DNS           []DNSTarget       `json:"dns,omitempty"`
 	Internet      []string          `json:"internet,omitempty"` // hosts to ping
 	Web           []WebTarget       `json:"web,omitempty"`
+	Ports         []PortTarget      `json:"ports,omitempty"`
 	Apps          []string          `json:"apps,omitempty"` // names from the catalogue
 	Traceroute    []string          `json:"traceroute,omitempty"`
 	VoIP          *VoIPTarget       `json:"voip,omitempty"`
@@ -146,6 +148,14 @@ type WebTarget struct {
 	ExpectBody   string `json:"expect_body,omitempty"`
 	Insecure     bool   `json:"insecure,omitempty"`
 	Follow       bool   `json:"follow,omitempty"`
+}
+
+// PortTarget is a plain TCP connect test, for the services a site depends on
+// that are not web pages: a print server, a file share, a line-of-business
+// application on a port of its own.
+type PortTarget struct {
+	Name    string `json:"name,omitempty"`
+	Address string `json:"address"` // host:port
 }
 
 // VoIPTarget is a call-shaped stream to a reflector.
@@ -496,6 +506,11 @@ func (c Config) Validate() error {
 				}
 			default:
 				return fmt.Errorf("%s: unknown throughput mode %q", n.Name, t.Mode)
+			}
+		}
+		for _, port := range n.Tests.Ports {
+			if _, _, err := net.SplitHostPort(port.Address); err != nil {
+				return fmt.Errorf("%s: %q is not a host and port", n.Name, port.Address)
 			}
 		}
 		if v := n.Tests.VoIP; v != nil && v.Reflector == "" {

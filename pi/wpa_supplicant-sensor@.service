@@ -1,0 +1,18 @@
+[Unit]
+Description=wpa_supplicant for the Crossbreeder Sensor radio on %I
+Documentation=https://github.com/andreacoppini/crossbreeder
+Before=crossbreeder-sensor.service
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=simple
+# -c holds only the control interface settings: every network the sensor joins
+# is added over that interface and removed again, so nothing is left behind on
+# the radio between passes and no passphrase is ever written to disk here.
+ExecStart=/sbin/wpa_supplicant -i %I -c /etc/crossbreeder-sensor/wpa_supplicant.conf -Dnl80211,wext -O /run/wpa_supplicant
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
