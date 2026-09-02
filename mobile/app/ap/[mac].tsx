@@ -161,13 +161,13 @@ export default function ApDetailScreen() {
             <Muted>Uptime</Muted>
           </View>
           <View>
-            <Label variant="title">{formatBytes((data.tx ?? 0) + (data.rx ?? 0))}</Label>
+            <Label variant="title">{formatBytes(data.txRx ?? undefined)}</Label>
             <Muted>Traffic</Muted>
           </View>
         </View>
 
         {data.status !== 'Online' ? (
-          <Muted>Last seen {formatRelative(data.lastSeenTime)}.</Muted>
+          <Muted>Last seen {formatRelative(data.lastSeen)}.</Muted>
         ) : null}
       </Card>
 
@@ -179,6 +179,7 @@ export default function ApDetailScreen() {
         <Stat label="Zone" value={firstNonEmpty(data.zoneName)} />
         <Stat label="AP group" value={firstNonEmpty(data.apGroupName)} />
         <Stat label="Location" value={firstNonEmpty(data.location)} />
+        <Stat label="Seen from" value={firstNonEmpty(data.extIp)} mono />
       </Group>
 
       <Group header="Radios">
@@ -201,12 +202,26 @@ export default function ApDetailScreen() {
         ) : null}
       </Group>
 
-      {data.cpuPercentage != null || data.memoryPercentage != null ? (
-        <Group header="Health">
-          <Stat label="CPU" value={formatPercent(data.cpuPercentage)} />
-          <Stat label="Memory" value={formatPercent(data.memoryPercentage)} />
-        </Group>
-      ) : null}
+      {/*
+        SmartZone reports no CPU or memory figure for an AP on the query
+        endpoint. What it does report is its own health rollup and the
+        per-radio latency and noise behind it, which is more useful anyway.
+      */}
+      <Group header="Health">
+        <Stat
+          label="Overall"
+          value={data.isOverallHealthStatusFlagged ? 'Flagged by the controller' : 'Not flagged'}
+          tone={data.isOverallHealthStatusFlagged ? 'warn' : 'up'}
+        />
+        <Stat
+          label="Alarms"
+          value={formatCount(data.alerts ?? 0)}
+          tone={(data.alerts ?? 0) > 0 ? 'warn' : undefined}
+        />
+        <Stat label="Configuration" value={firstNonEmpty(data.configurationStatus)} />
+        <Stat label="Registration" value={firstNonEmpty(data.registrationState)} />
+        {data.crashDump ? <Stat label="Crash dump" value="Present" tone="down" /> : null}
+      </Group>
 
       <Group
         header="Clients on this AP"

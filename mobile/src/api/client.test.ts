@@ -51,8 +51,23 @@ describe('pickApiVersion', () => {
     expect(compareApiVersions('v9_0', 'v11_0')).toBeLessThan(0);
   });
 
-  it('falls back when the controller offers nothing we know', () => {
-    expect(pickApiVersion(['v99_9'])).toBe('v99_9');
+  it('takes the newest point release a real controller offers', () => {
+    // What a SmartZone 7.1.1 cluster actually answers `apiInfo` with. An
+    // exact-match list that did not happen to name v13_1 would silently drop
+    // back to v13_0 here.
+    expect(pickApiVersion(['v11_0', 'v11_1', 'v12_0', 'v13_0', 'v13_1'])).toBe('v13_1');
+  });
+
+  it('does not run ahead of what this build knows', () => {
+    // v14_0 is the ceiling; a controller offering more gets held at it.
+    expect(pickApiVersion(['v13_0', 'v14_0', 'v15_0'])).toBe('v14_0');
+  });
+
+  it('takes the oldest on offer when everything is newer than we know', () => {
+    expect(pickApiVersion(['v20_0', 'v21_0'])).toBe('v20_0');
+  });
+
+  it('falls back when the controller offers nothing at all', () => {
     expect(pickApiVersion([])).toBe('v11_0');
     expect(pickApiVersion(undefined)).toBe('v11_0');
   });

@@ -106,13 +106,15 @@ backend.
 
 ## What it does
 
-**Overview** — APs online, flagged and offline, each tapping through to that
-filter; client count; outstanding alarms with severity.
+**Overview** — APs online, flagged and offline, counted from the AP query
+because the controller has no summary that carries them; cluster inventory and
+licensed capacity; outstanding alarms with severity.
 
-**Access points** — server-side search, filter by status and zone, paged as
+**Access points** — server-side search and sort, filter by zone, paged as
 you scroll. Per AP: status, uptime, traffic, clients, identity, per-radio
-channel, client count, airtime and power, and CPU/memory where reported.
-Blink the LEDs to find it on a ceiling; reboot it, behind a confirmation.
+channel, client count, airtime and power, and the controller's own health
+rollup. Blink the LEDs to find it on a ceiling; reboot it, behind a
+confirmation.
 
 **WLANs** — every SSID across every zone, with security, VLAN, client count
 and traffic. Editable from a phone: name, SSID, broadcast, VLAN and the
@@ -123,10 +125,14 @@ tunnelling — changes whose consequences should be visible on a real screen.
 WLAN groups, and the firmware their APs are pinned to. Read-only, because a
 zone-level change reaches every AP in the zone at once.
 
-**Dynamic PSKs** — search across the cluster, generate a batch against any
-DPSK-enabled WLAN with a name, device limit, expiry and VLAN override, reveal
-and copy a passphrase one tap at a time, revoke, and export the current filter
-as CSV through the share sheet.
+**Dynamic PSKs** — search across the cluster, generate against any
+DPSK-enabled WLAN with a name, shared-or-per-device, expiry and VLAN override,
+revoke, and export the current filter as CSV through the share sheet.
+
+Because SmartZone will not read a passphrase back (see below), a generated key
+is shown once, at creation, and the generate form lets you set the passphrase
+yourself — the only way to have it on record for the tenant who rings up in
+six months.
 
 **Client troubleshooting** — the screen this app exists for. It answers the
 questions in the order an engineer asks them:
@@ -137,9 +143,10 @@ questions in the order an engineer asks them:
    identical to a working one on every summary screen, and is the most common
    "it's connected but nothing works".
 3. *What is it attached to, and on what?* AP, band, channel, BSSID, VLAN.
-4. *Has it been dropping?* Past sessions with the controller's own disconnect
-   reasons — where a client keeps reconnecting, that pattern says more than
-   any single live reading.
+4. *Has it been dropping?* Past sessions, with how long each one lasted. The
+   controller records no disconnect reason, so the screen does not invent one
+   — but a column of two-minute sessions is a roaming or authentication
+   problem, and says so more reliably than a reason code would.
 
 Then disconnect (forces a re-association) or deauthenticate (forces a fresh
 authentication too).
@@ -157,10 +164,15 @@ the wireless is broken and the wireless is fine.
 Switching is the next thing this app grows into, and the shape of that growth
 is settled now so it disturbs nothing later:
 
-- [`src/api/resources/switches.ts`](src/api/resources/switches.ts) already
-  hangs off the same client, session and query builder as Wi-Fi, with typed
-  `SwitchRow`, `SwitchPort` and `SwitchGroup`. What is missing is screens, not
-  plumbing.
+- [`src/api/resources/switches.ts`](src/api/resources/switches.ts) hangs off
+  the same client, session and query builder as Wi-Fi, with typed `SwitchRow`,
+  `SwitchPort` and `SwitchGroup`.
+- What is missing is not screens but an endpoint. Every public switch path
+  probed against a 7.1.1 cluster managing 43 switches returned 404, so
+  `probe()` asks the controller at runtime which path answers rather than
+  shipping one that is known not to. That question — where the switch API
+  actually lives on this release — is the first thing to settle before any
+  switch screen is worth building.
 - The **More** tab carries a Switches row from this first release rather than
   having one appear out of nowhere, and the overview surfaces the cluster's
   switch count when it has one.
@@ -208,15 +220,75 @@ APs costs one request per screenful, not a download.
 a `kind` a screen can switch on, so nothing has to parse a message string to
 decide whether to offer "sign in again", "trust this certificate" or "retry".
 
+## Verified against a real controller
+
+Every read path in this app has been replayed against a live **SmartZone
+7.1.1** cluster — 563 access points, ~490 clients, 16 WLANs, 649 DPSKs — and
+the request shapes it sends are the ones that came back 200. That exercise
+changed a lot, because the published schema and the controller disagree in
+places that matter. The findings are worth knowing whoever works on this next:
+
+- **The identifier on a WLAN row is `wlanId`, not `id`.** Getting that wrong
+  makes every row in the list silently un-tappable.
+- **DPSK passphrases are write-only.** Neither the WLAN's DPSK endpoint nor
+  `POST /query/dpsk` returns one; a key row carries a `key` UUID and no
+  passphrase at all. There is therefore no "reveal" in the key list and no
+  passphrase column in the export, and the generate screen lets you set the
+  passphrase yourself, because that is the only way to have it on record.
+- **`acknowledged` on an alarm is the string `"Yes"`/`"No"`, not a boolean.**
+  Reading it as truthy marks every open alarm acknowledged.
+- **A client's `rssi`/`snr` of 0 means "no reading", not a perfect signal.**
+  Scoring it as a number reports a dead client as excellent, which is the
+  worst possible failure on the troubleshooting screen.
+- **There is no `sessionDuration` field on a client**, only
+  `sessionStartTime` — though `sessionDuration` *is* accepted as a sort
+  column. And `radioType` is a PHY string (`"a/n/ac/ax/be"`), not a band, so
+  the band comes from the channel number.
+- **`filters` and `extraFilters` accept different type enums, and the
+  controller enforces it.** `SSID` or `CLIENT` in `filters` is a 400. Both
+  enums are transcribed in `src/api/query.ts`.
+- **AP status cannot be filtered server-side.** A `STATUS` extraFilter is
+  accepted and then matches nothing, and an `attributes` projection returns
+  rows missing the projected field. So the overview counts statuses by paging
+  the AP query, and the AP list sorts by status and narrows what it has
+  loaded — and says which, rather than showing an empty list and implying
+  there are no offline APs.
+- **A DPSK `WLAN` filter matches nothing** in either slot, so narrowing to one
+  WLAN happens locally.
+- **`devicesSummary` carries no health breakdown.** On this cluster it reports
+  `aps: 287` while the AP query finds 549 online: the two count different
+  things and neither is a health figure. It is used for inventory and licensed
+  capacity only.
+- **The AP query row and `/aps/{mac}/operational/summary` use different
+  names** for the same things (`apMac`/`mac`, `deviceName`/`name`,
+  `numClients`/`clientCount`, `lastSeen`/`lastSeenTime`,
+  `firmwareVersion`/`version`). The detail screen reads the query row, which
+  is far richer; there is no CPU or memory figure on either.
+- **A WLAN's own passphrase *is* returned in cleartext** by the WLAN endpoint,
+  unlike a DPSK, so the editor shows it masked behind a tap.
+- **API version negotiation needs a ceiling, not a list.** This controller
+  offers up to `v13_1`, a point release no hand-maintained list happened to
+  name; an exact-match list quietly dropped back to `v13_0`.
+
 ## Known limits
 
-- Written against the SmartZone public API schema. The live controller this
-  was to be validated against was unreachable during development
-  (`http_526` at its edge), so the endpoint paths, request shapes and response
-  envelopes come from the API specification rather than from observed traffic.
-  Field-level differences between controller versions are the most likely
-  place to need a fix; every response model treats every field as optional so
-  a missing one degrades a row rather than crashing a screen.
+- Verified against one 7.1.1 cluster. Older controllers are handled by version
+  negotiation and by treating every response field as optional, so a missing
+  one degrades a row rather than crashing a screen — but they have not been
+  exercised.
+- **Nothing that writes has been run against a live controller.** Reboot,
+  client disconnect and deauthentication, WLAN edits, DPSK generation and
+  revocation are built from the endpoint definitions and from a working
+  production integration against this same cluster, but running them would
+  have changed a production estate. The request shapes are right; the
+  behaviour on success is the part still to confirm.
+- **Switch management has no working endpoint yet.** Every public path tried
+  returns 404 on 7.1.1 — `/query/switch`, `/query/switches`,
+  `/query/switchport`, `/switches`, `/switchgroups`, `/switchm/*` — on a
+  cluster that manages 43 switches. So the switch API is either off the
+  `/wsg/api/public` tree on this release or needs a scope this admin account
+  lacks. `switchesApi.probe()` finds out at runtime rather than asserting a
+  path that is known not to work.
 - WLAN creation is wired in the API layer (`wlans.create`, one endpoint per
   authentication style) but has no screen: the form that does it justice is
   larger than the editor, and a half-built WLAN is worse than none.

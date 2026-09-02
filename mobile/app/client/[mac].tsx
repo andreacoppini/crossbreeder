@@ -3,7 +3,15 @@ import { Alert, RefreshControl, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { SmartZoneError, signalReason, signalVerdict } from '@/api';
+import {
+  SmartZoneError,
+  bandForClient,
+  isAuthorised,
+  sessionDuration,
+  signalReason,
+  signalVerdict,
+  type HistoricalClientRow,
+} from '@/api';
 import {
   useClient,
   useClientActions,
@@ -25,7 +33,7 @@ import {
 import { useTheme, type StatusTone } from '@/ui/theme';
 import {
   firstNonEmpty,
-  formatBand,
+  formatPhy,
   formatBytes,
   formatDateTime,
   formatDuration,
@@ -156,7 +164,7 @@ export default function ClientDetailScreen() {
 
   const verdict = signalVerdict(data);
   const tone = VERDICT_TONE[verdict] ?? 'neutral';
-  const authorised = !data.authStatus || /^authorized$/i.test(data.authStatus);
+  const authorised = isAuthorised(data);
 
   return (
     <Screen
@@ -196,7 +204,7 @@ export default function ClientDetailScreen() {
             <Muted>Noise margin</Muted>
           </View>
           <View>
-            <Label variant="title">{formatDuration(data.sessionDuration)}</Label>
+            <Label variant="title">{formatDuration(sessionDuration(data))}</Label>
             <Muted>Connected</Muted>
           </View>
         </View>
@@ -221,7 +229,7 @@ export default function ClientDetailScreen() {
         <Stat label="MAC" value={formatMac(data.clientMac ?? mac)} mono />
         <Stat label="IP" value={firstNonEmpty(data.ipAddress, data.ipv6Address)} mono />
         <Stat label="SSID" value={firstNonEmpty(data.ssid)} />
-        <Stat label="VLAN" value={data.vlan ?? data.vlanId ?? '—'} />
+        <Stat label="VLAN" value={data.vlan ?? '—'} />
         <Row
           title="Access point"
           subtitle={`${firstNonEmpty(data.apName)} · ${formatMac(data.apMac)}`}
@@ -231,9 +239,11 @@ export default function ClientDetailScreen() {
               : undefined
           }
         />
-        <Stat label="Band" value={formatBand(data.radioType)} />
+        <Stat label="Band" value={bandForClient(data) ?? 'Not reported'} />
         <Stat label="Channel" value={data.channel ?? '—'} />
+        <Stat label="Radio" value={formatPhy(data.radioType)} />
         <Stat label="BSSID" value={formatMac(data.bssid)} mono />
+        <Stat label="Device" value={firstNonEmpty(data.deviceType, data.modelName)} />
       </Group>
 
       <Group header="Authentication">
@@ -245,17 +255,17 @@ export default function ClientDetailScreen() {
         <Stat label="Method" value={firstNonEmpty(data.authMethod)} />
         <Stat label="Encryption" value={firstNonEmpty(data.encryptionMethod)} />
         <Stat label="Username" value={firstNonEmpty(data.userName)} />
-        {data.dpskId ? <Stat label="Keyed by" value="Dynamic PSK" /> : null}
+        <Stat label="Role" value={firstNonEmpty(data.userRoleName)} />
       </Group>
 
-      <Group header="Throughput" footer="Rates are what the radios negotiated, not what the client is achieving.">
+      <Group
+        header="Throughput"
+        footer="The rates are medians of what the radios negotiated, not what the client is achieving."
+      >
         <Stat label="Received" value={formatBytes(data.rxBytes)} />
         <Stat label="Sent" value={formatBytes(data.txBytes)} />
-        <Stat label="Rx rate" value={formatRate(data.rxMcsRate)} />
-        <Stat label="Tx rate" value={formatRate(data.txMcsRate)} />
-        {data.noiseFloor != null ? (
-          <Stat label="Noise floor" value={formatRssi(data.noiseFloor)} />
-        ) : null}
+        <Stat label="Rx rate" value={formatRate(data.medianRxMCSRate)} />
+        <Stat label="Tx rate" value={formatRate(data.medianTxMCSRate)} />
       </Group>
 
       <PastSessions sessions={pastSessions} loading={history.isLoading} />
@@ -299,41 +309,56 @@ export default function ClientDetailScreen() {
   );
 }
 
-/** Past sessions, with whatever reason the controller recorded for the drop. */
+/**
+ * Past sessions.
+ *
+ * SmartZone 7.1.1 records no disconnect reason on a historical session, so
+ * there is nothing to state as a cause and this does not invent one. What it
+ * does have is the shape: how long each session lasted and how close together
+ * they are. A column of two-minute sessions is a roaming or authentication
+ * problem, and it says that far more reliably than a reason code would.
+ */
 function PastSessions({
   sessions,
   loading,
 }: {
-  sessions: { sessionEndTime?: number; disconnectTime?: number; disconnectReason?: string; apName?: string; ssid?: string; sessionDuration?: number }[];
+  sessions: HistoricalClientRow[];
   loading: boolean;
 }) {
   return (
     <Group
       header="Recent sessions"
-      footer="Where a client keeps reconnecting, the pattern here says more than any single reading above."
+      footer="Where a client keeps reconnecting, the pattern here says more than any single reading above. The controller records no reason for a disconnect."
     >
       {loading ? (
         <Row title="Reading history…" />
       ) : sessions.length === 0 ? (
         <Row title="No earlier sessions" subtitle="The controller has none recorded" />
       ) : (
-        sessions.slice(0, 10).map((session, i) => (
-          <Row
-            key={i}
-            title={firstNonEmpty(session.disconnectReason, 'Disconnected')}
-            subtitle={`${firstNonEmpty(session.ssid)} · ${firstNonEmpty(session.apName)}`}
-            detail={
-              <Muted>
-                {formatDateTime(session.sessionEndTime ?? session.disconnectTime)}
-                {session.sessionDuration != null
-                  ? ` · lasted ${formatDuration(session.sessionDuration)}`
-                  : ''}
-                {' · '}
-                {formatRelative(session.sessionEndTime ?? session.disconnectTime)}
-              </Muted>
-            }
-          />
-        ))
+        sessions.slice(0, 10).map((session, i) => {
+          const lasted =
+            session.sessionStartTime && session.sessionEndTime
+              ? Math.max(
+                  0,
+                  Math.floor((session.sessionEndTime - session.sessionStartTime) / 1000),
+                )
+              : undefined;
+          return (
+            <Row
+              key={i}
+              title={
+                lasted != null ? `Lasted ${formatDuration(lasted)}` : 'Session ended'
+              }
+              subtitle={`${firstNonEmpty(session.ssid)} · ${formatMac(session.apMac)}`}
+              detail={
+                <Muted>
+                  Ended {formatDateTime(session.sessionEndTime)} ·{' '}
+                  {formatRelative(session.sessionEndTime)}
+                </Muted>
+              }
+            />
+          );
+        })
       )}
     </Group>
   );

@@ -40,13 +40,14 @@ export default function ToolsScreen() {
   const [output, setOutput] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Only online APs can run anything, so the picker never offers a dead one.
-  const aps = useApList({ search: apSearch, status: 'Online', sortColumn: 'deviceName' });
+  // Only an online AP can run anything, and the controller will not filter by
+  // status, so offline ones are dropped here instead.
+  const aps = useApList({ search: apSearch, sortColumn: 'deviceName' });
   const apOptions = useMemo(
     () =>
       (aps.data?.pages.flatMap((p) => p.list ?? []) ?? [])
+        .filter((ap) => ap.apMac && ap.status === 'Online')
         .slice(0, 25)
-        .filter((ap) => ap.apMac)
         .map((ap) => ({
           value: ap.apMac!,
           label: firstNonEmpty(ap.deviceName, ap.apMac),

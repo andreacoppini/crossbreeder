@@ -6,7 +6,7 @@ import {
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import type { BuildCriteriaInput, QueryFilter } from '@/api';
-import { DEFAULT_PAGE_SIZE, SmartZoneError } from '@/api';
+import { DEFAULT_PAGE_SIZE, SmartZoneError, filterByWlan } from '@/api';
 import { useControllers } from '@/controllers/ControllerProvider';
 
 /**
@@ -54,9 +54,28 @@ export function useDevicesSummary() {
     ...shared,
     queryKey: [scope, 'devicesSummary'],
     enabled,
-    staleTime: LIVE_MS,
-    refetchInterval: 30_000,
+    staleTime: CONFIG_MS,
     queryFn: ({ signal }) => api!.system.devicesSummary(signal),
+  });
+}
+
+/**
+ * How many APs are online, flagged and offline.
+ *
+ * This costs a few requests rather than one, because the controller will not
+ * count for us: a `STATUS` filter matches nothing and `devicesSummary` has no
+ * health breakdown. It is cached for a minute and only refreshed on a pull,
+ * so the cost lands once per visit rather than on a timer.
+ */
+export function useApStatusCounts(zoneId?: string) {
+  const scope = useScope();
+  const { api, enabled } = useReadyApi();
+  return useQuery({
+    ...shared,
+    queryKey: [scope, 'apStatusCounts', zoneId],
+    enabled,
+    staleTime: 60_000,
+    queryFn: ({ signal }) => api!.aps.statusCounts({ zoneId, signal }),
   });
 }
 
@@ -104,7 +123,6 @@ export interface ApListInput {
   search?: string;
   zoneId?: string;
   apGroupId?: string;
-  status?: string;
   sortColumn?: string;
   sortDir?: 'ASC' | 'DESC';
 }
@@ -122,6 +140,12 @@ function apFilters(input: ApListInput): QueryFilter[] {
  * Infinite rather than offset-paged because the screen is a scroll: the list
  * asks for the next page when the operator reaches the bottom, and nothing
  * larger than one page is ever held for a cluster that may have thousands.
+ *
+ * There is no status filter here on purpose. A `STATUS` extraFilter is
+ * accepted by a 7.1.1 controller and then matches nothing at all, which would
+ * show an empty list and call it "no offline APs" — the most dangerous
+ * possible wrong answer on this screen. The list screen sorts by status
+ * instead and filters what it has loaded, and says so.
  */
 export function useApList(input: ApListInput) {
   const scope = useScope();
@@ -140,9 +164,6 @@ export function useApList(input: ApListInput) {
           pageSize: DEFAULT_PAGE_SIZE,
           search: input.search,
           filters: apFilters(input),
-          extraFilters: input.status
-            ? [{ type: 'STATUS', value: input.status }]
-            : undefined,
           sort: input.sortColumn
             ? { sortColumn: input.sortColumn, dir: input.sortDir ?? 'ASC' }
             : undefined,
@@ -153,6 +174,13 @@ export function useApList(input: ApListInput) {
   });
 }
 
+/**
+ * One AP, from the query endpoint rather than `/operational/summary`.
+ *
+ * The query row carries status, traffic, per-radio client counts, airtime and
+ * the zone and group *names*; the operational summary carries none of those
+ * and spells half of what it does carry differently.
+ */
 export function useAp(apMac?: string) {
   const scope = useScope();
   const { api, enabled } = useReadyApi();
@@ -162,7 +190,7 @@ export function useAp(apMac?: string) {
     enabled: enabled && !!apMac,
     staleTime: LIVE_MS,
     refetchInterval: 30_000,
-    queryFn: ({ signal }) => api!.aps.operational(apMac!, signal),
+    queryFn: ({ signal }) => api!.aps.byMac(apMac!, signal),
   });
 }
 
@@ -293,6 +321,14 @@ export function useWlanGroups(zoneId?: string) {
 
 /* ------------------------------------------------------------------ DPSKs */
 
+/**
+ * DPSKs.
+ *
+ * A `WLAN` filter is accepted by `/query/dpsk` and matches nothing on 7.1.1,
+ * in either filter slot, so narrowing to one WLAN is done here over the rows
+ * that come back. The page size is raised when a WLAN is named so that local
+ * narrowing still fills a screen.
+ */
 export function useDpskList(input: { search?: string; zoneId?: string; wlanId?: string }) {
   const scope = useScope();
   const { api, enabled } = useReadyApi();
@@ -302,19 +338,18 @@ export function useDpskList(input: { search?: string; zoneId?: string; wlanId?: 
     enabled,
     staleTime: LIVE_MS,
     initialPageParam: 1,
-    queryFn: ({ pageParam, signal }) =>
-      api!.dpsk.query(
+    queryFn: async ({ pageParam, signal }) => {
+      const res = await api!.dpsk.query(
         {
           page: pageParam,
-          pageSize: DEFAULT_PAGE_SIZE,
+          pageSize: input.wlanId ? 250 : DEFAULT_PAGE_SIZE,
           search: input.search,
-          filters: [
-            ...(input.zoneId ? [{ type: 'ZONE' as const, value: input.zoneId }] : []),
-            ...(input.wlanId ? [{ type: 'WLAN' as const, value: input.wlanId }] : []),
-          ],
+          filters: input.zoneId ? [{ type: 'ZONE', value: input.zoneId }] : undefined,
         },
         signal,
-      ),
+      );
+      return { ...res, list: filterByWlan(res.list ?? [], input.wlanId) };
+    },
     getNextPageParam: (last, pages) => (last.hasMore ? pages.length + 1 : undefined),
   });
 }
@@ -365,6 +400,13 @@ export interface ClientListInput {
   sortDir?: 'ASC' | 'DESC';
 }
 
+/**
+ * Connected clients.
+ *
+ * `ZONE` and `AP` are scope filters and belong in `filters`; `SSID` is an
+ * attribute and belongs in `extraFilters`. Putting `SSID` in the wrong slot
+ * is a 400 from the controller, not a filter it quietly ignores.
+ */
 export function useClientList(input: ClientListInput) {
   const scope = useScope();
   const { api, enabled } = useReadyApi();
@@ -383,8 +425,10 @@ export function useClientList(input: ClientListInput) {
           filters: [
             ...(input.zoneId ? [{ type: 'ZONE' as const, value: input.zoneId }] : []),
             ...(input.apMac ? [{ type: 'AP' as const, value: input.apMac }] : []),
-            ...(input.ssid ? [{ type: 'SSID' as const, value: input.ssid }] : []),
           ],
+          extraFilters: input.ssid
+            ? [{ type: 'SSID', value: input.ssid }]
+            : undefined,
           sort: input.sortColumn
             ? { sortColumn: input.sortColumn, dir: input.sortDir ?? 'ASC' }
             : undefined,
@@ -409,7 +453,12 @@ export function useClient(mac?: string) {
   });
 }
 
-/** Past sessions for one MAC, the other half of troubleshooting. */
+/**
+ * Past sessions for one MAC, the other half of troubleshooting.
+ *
+ * `CLIENT` goes in `extraFilters`: this endpoint's `filters` enum is a
+ * different set again and rejects it outright.
+ */
 export function useClientHistory(mac?: string) {
   const scope = useScope();
   const { api, enabled } = useReadyApi();
@@ -420,7 +469,7 @@ export function useClientHistory(mac?: string) {
     staleTime: 60_000,
     queryFn: ({ signal }) =>
       api!.clients.history(
-        { pageSize: 25, filters: [{ type: 'CLIENT', value: mac! }] },
+        { pageSize: 25, extraFilters: [{ type: 'CLIENT', value: mac! }] },
         signal,
       ),
   });

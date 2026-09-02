@@ -1,11 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, RefreshControl, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
-import { SmartZoneError, dpskToCsv, type Dpsk } from '@/api';
+import { SmartZoneError, dpskToCsv, expiryDate, type Dpsk } from '@/api';
 import { useApi } from '@/controllers/ControllerProvider';
 import { useDpskList, useDpskMutations, useZones } from '@/hooks/queries';
 import {
@@ -15,21 +13,36 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  Group,
+  Label,
   Loading,
   Muted,
   Pill,
   Row,
+  Stat,
 } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
-import { firstNonEmpty, formatCount, formatRelative } from '@/utils/format';
+import {
+  firstNonEmpty,
+  formatCount,
+  formatDateTime,
+  formatMac,
+  formatRelative,
+} from '@/utils/format';
 
 /**
  * Dynamic PSKs.
  *
- * The two things this screen exists for are issuing a key and handing it to
- * somebody. A passphrase is masked until tapped, because this list gets held
- * up in a room with other people in it, and copying one is a single tap
- * because the alternative is reading sixteen random characters aloud.
+ * The shape of this screen is dictated by one fact about SmartZone:
+ * **a DPSK passphrase is write-only.** Neither the WLAN's DPSK endpoint nor
+ * `POST /query/dpsk` returns one — verified against a 7.1.1 cluster, where a
+ * key row carries a `key` UUID and no passphrase at all.
+ *
+ * So there is no "reveal" here, and no passphrase column in the export. The
+ * only moment a passphrase can be known is when it is created, which is why
+ * the generate screen shows them once and offers to copy them, and why it
+ * lets an operator choose the passphrase rather than have the controller
+ * invent one they can never read back.
  */
 export default function DpskScreen() {
   const t = useTheme();
@@ -37,8 +50,8 @@ export default function DpskScreen() {
   const api = useApi();
 
   const [search, setSearch] = useState('');
-  const [zoneId, setZoneId] = useState<string | undefined>(params.zoneId);
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [zoneId, setZoneId] = useState<string | undefined>(params.zoneId || undefined);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const zones = useZones();
@@ -59,25 +72,18 @@ export default function DpskScreen() {
     [zones.data],
   );
 
-  const copyKey = useCallback(async (dpsk: Dpsk) => {
-    if (!dpsk.passphrase) return;
-    await Clipboard.setStringAsync(dpsk.passphrase);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', `The passphrase for ${firstNonEmpty(dpsk.userName)} is on the clipboard.`);
-  }, []);
-
   const confirmRevoke = useCallback(
     (dpsk: Dpsk) => {
-      if (!dpsk.id || !dpsk.wlanId || !dpsk.zoneId) {
+      if (!dpsk.key || !dpsk.wlanId || !dpsk.zoneId) {
         Alert.alert(
-          'Cannot revoke from here',
-          'The controller did not say which WLAN this key belongs to. Open it from its WLAN instead.',
+          'Cannot revoke this key',
+          'The controller did not say which WLAN it belongs to.',
         );
         return;
       }
       Alert.alert(
         'Revoke this key?',
-        `${firstNonEmpty(dpsk.userName)} will be disconnected and will not be able to rejoin with this passphrase.`,
+        `${firstNonEmpty(dpsk.userName)} will be disconnected and cannot rejoin with this passphrase. It cannot be undone: the passphrase is not readable, so the key cannot be recreated as it was.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -88,7 +94,7 @@ export default function DpskScreen() {
                 await revoke.mutateAsync({
                   zoneId: dpsk.zoneId!,
                   wlanId: dpsk.wlanId!,
-                  ids: [dpsk.id!],
+                  ids: [dpsk.key!],
                 });
               } catch (err) {
                 Alert.alert(
@@ -105,11 +111,9 @@ export default function DpskScreen() {
   );
 
   /**
-   * Export what the current filter matches, as a CSV.
-   *
-   * Written to the app's own cache and handed to the share sheet rather than
-   * saved anywhere: these are live credentials, and they should leave through
-   * a deliberate choice about where they go.
+   * Export what the current filter matches. No passphrases, because the
+   * controller does not have them to give; a column of blanks would read as
+   * "these keys have no passphrase", which is worse than no column.
    */
   const exportCsv = useCallback(async () => {
     setExporting(true);
@@ -149,7 +153,7 @@ export default function DpskScreen() {
           label=""
           value={search}
           onChangeText={setSearch}
-          placeholder="Search by user, SSID or MAC"
+          placeholder="Search by user name"
         />
       </View>
 
@@ -179,7 +183,7 @@ export default function DpskScreen() {
       ) : (
         <FlatList
           data={keys}
-          keyExtractor={(item, i) => item.id ?? String(i)}
+          keyExtractor={(item, i) => item.key ?? String(i)}
           contentContainerStyle={{ padding: t.space.lg, paddingTop: 0, gap: t.space.sm }}
           refreshControl={
             <RefreshControl
@@ -194,7 +198,7 @@ export default function DpskScreen() {
           ListHeaderComponent={
             <View style={{ gap: t.space.sm }}>
               <Muted>
-                {formatCount(total)} key{total === 1 ? '' : 's'}
+                {formatCount(total)} key{total === 1 ? '' : 's'} in this scope
               </Muted>
               <Button
                 title="Generate keys"
@@ -202,6 +206,14 @@ export default function DpskScreen() {
                   router.push({ pathname: '/dpsk/generate', params: { zoneId: zoneId ?? '' } })
                 }
               />
+              <Card style={{ gap: 4 }}>
+                <Label variant="subhead">Passphrases are write-only</Label>
+                <Muted>
+                  SmartZone will not read a DPSK passphrase back, so it can be
+                  seen only at the moment it is created. Set your own when you
+                  generate a key if you will need it again.
+                </Muted>
+              </Card>
             </View>
           }
           ListEmptyComponent={
@@ -218,31 +230,25 @@ export default function DpskScreen() {
             query.isFetchingNextPage ? (
               <Loading />
             ) : keys.length > 0 ? (
-              <View style={{ paddingTop: t.space.md }}>
+              <View style={{ paddingTop: t.space.md, gap: t.space.sm }}>
                 <Button
-                  title="Export these keys as CSV"
+                  title="Export this list as CSV"
                   variant="secondary"
                   loading={exporting}
                   onPress={() => void exportCsv()}
                 />
-                <View style={{ paddingTop: t.space.sm }}>
-                  <Muted>
-                    The export carries live passphrases. It goes to the share
-                    sheet, not to storage, so you choose where it lands.
-                  </Muted>
-                </View>
+                <Muted>
+                  Names, WLANs, VLANs and expiry. No passphrases, because the
+                  controller does not have them to give.
+                </Muted>
               </View>
             ) : null
           }
           renderItem={({ item }) => (
             <DpskCard
               dpsk={item}
-              revealed={!!(item.id && revealed[item.id])}
-              onToggle={() =>
-                item.id &&
-                setRevealed((prev) => ({ ...prev, [item.id!]: !prev[item.id!] }))
-              }
-              onCopy={() => void copyKey(item)}
+              expanded={!!item.key && expanded === item.key}
+              onToggle={() => setExpanded((prev) => (prev === item.key ? null : item.key ?? null))}
               onRevoke={() => confirmRevoke(item)}
             />
           )}
@@ -254,57 +260,53 @@ export default function DpskScreen() {
 
 function DpskCard({
   dpsk,
-  revealed,
+  expanded,
   onToggle,
-  onCopy,
   onRevoke,
 }: {
   dpsk: Dpsk;
-  revealed: boolean;
+  expanded: boolean;
   onToggle: () => void;
-  onCopy: () => void;
   onRevoke: () => void;
 }) {
   const t = useTheme();
-  const expired = /expired/i.test(dpsk.status ?? '');
-  const used = dpsk.numberOfDevicesUsed ?? 0;
-  const limit = dpsk.deviceCountLimit;
+  const expiry = expiryDate(dpsk);
 
   return (
     <Card padded={false}>
       <Row
-        tone={expired ? 'down' : 'up'}
+        tone={dpsk.expired ? 'down' : 'up'}
         title={firstNonEmpty(dpsk.userName)}
-        subtitle={`${firstNonEmpty(dpsk.ssid, dpsk.wlanName)}${dpsk.vlanId != null ? ` · VLAN ${dpsk.vlanId}` : ''}`}
+        subtitle={
+          dpsk.ueMac ? `Bound to ${formatMac(dpsk.ueMac)}` : 'Not bound to a device'
+        }
         detail={
           <Muted>
-            {limit ? `${used} of ${limit} devices` : `${used} devices`}
-            {dpsk.expirationDate ? ` · expires ${formatRelative(Date.parse(dpsk.expirationDate))}` : ' · no expiry'}
+            {dpsk.vlanId != null ? `VLAN ${dpsk.vlanId} · ` : ''}
+            {expiry ? `expires ${formatRelative(expiry.getTime())}` : 'no expiry'}
+            {dpsk.group ? ' · shared key' : ''}
           </Muted>
         }
-        right={expired ? <Pill label="Expired" tone="down" compact /> : null}
+        right={
+          dpsk.expired ? (
+            <Pill label="Expired" tone="down" compact />
+          ) : dpsk.group ? (
+            <Pill label="Shared" tone="neutral" compact />
+          ) : null
+        }
         onPress={onToggle}
       />
-      {revealed ? (
-        <View style={{ paddingHorizontal: t.space.lg, paddingBottom: t.space.lg, gap: t.space.sm }}>
-          <Card style={{ backgroundColor: t.colors.background }}>
-            <Muted>Passphrase</Muted>
-            <Row title={dpsk.passphrase ?? 'Not returned by the controller'} />
-          </Card>
-          <View style={{ flexDirection: 'row', gap: t.space.sm }}>
-            <Button
-              title="Copy"
-              variant="secondary"
-              style={{ flex: 1 }}
-              disabled={!dpsk.passphrase}
-              onPress={onCopy}
-            />
-            <Button
-              title="Revoke"
-              variant="destructive"
-              style={{ flex: 1 }}
-              onPress={onRevoke}
-            />
+      {expanded ? (
+        <View style={{ paddingBottom: t.space.md }}>
+          <Group>
+            <Stat label="Created" value={formatDateTime(dpsk.createDateTime)} />
+            <Stat label="Expires" value={expiry ? formatDateTime(expiry.getTime()) : 'Never'} />
+            <Stat label="VLAN" value={dpsk.vlanId ?? '—'} />
+            <Stat label="Device" value={dpsk.ueMac ? formatMac(dpsk.ueMac) : 'Any'} mono />
+            <Stat label="WLAN id" value={firstNonEmpty(dpsk.wlanId)} mono />
+          </Group>
+          <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.md }}>
+            <Button title="Revoke this key" variant="destructive" onPress={onRevoke} />
           </View>
         </View>
       ) : null}

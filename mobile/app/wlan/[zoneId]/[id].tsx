@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, Switch, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { SmartZoneError } from '@/api';
+import {
+  SmartZoneError,
+  accessVlan,
+  isDpskWlan,
+  isExternalDpskWlan,
+  isOpenWlan,
+  isSsidBroadcast,
+  wlanPatch,
+} from '@/api';
 import { useWlan, useWlanMutations } from '@/hooks/queries';
 import {
   Button,
@@ -30,9 +39,11 @@ import { firstNonEmpty } from '@/utils/format';
  * WLAN — its authentication model, its portal, its tunnelling — is left to
  * the controller's own UI, where the consequences are visible.
  *
- * Every save sends only the fields that actually changed: SmartZone rejects a
- * PATCH carrying keys it did not itself return, and a WLAN object carries
- * dozens of them.
+ * The configuration object nests where the list endpoint flattens: the VLAN
+ * is `vlan.accessVlan`, DPSK is `dpsk.dpskEnabled`, and broadcast is the
+ * *inverse* of `advancedOptions.hideSsidEnabled`. `wlanPatch` builds an
+ * update that keeps each nested object whole, because sending a partial one
+ * clears the keys left out of it.
  */
 export default function WlanDetailScreen() {
   const t = useTheme();
@@ -45,62 +56,60 @@ export default function WlanDetailScreen() {
   const [broadcast, setBroadcast] = useState(true);
   const [vlan, setVlan] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [revealed, setRevealed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const data = wlan.data;
+
   // Seed the form once the WLAN arrives, and again after a refetch.
   useEffect(() => {
-    const data = wlan.data;
     if (!data) return;
     setName(data.name ?? '');
     setSsid(data.ssid ?? '');
-    setBroadcast(data.ssidBroadcastEnabled !== false);
-    setVlan(data.vlanId != null ? String(data.vlanId) : '');
+    setBroadcast(isSsidBroadcast(data));
+    const av = accessVlan(data);
+    setVlan(av != null ? String(av) : '');
     setPassphrase('');
-  }, [wlan.data]);
-
-  const data = wlan.data;
+    setRevealed(false);
+  }, [data]);
 
   const dirty = Boolean(
     data &&
       (name !== (data.name ?? '') ||
         ssid !== (data.ssid ?? '') ||
-        broadcast !== (data.ssidBroadcastEnabled !== false) ||
-        vlan !== (data.vlanId != null ? String(data.vlanId) : '') ||
+        broadcast !== isSsidBroadcast(data) ||
+        vlan !== (accessVlan(data) != null ? String(accessVlan(data)) : '') ||
         passphrase.length > 0),
   );
 
   const save = useCallback(async () => {
     if (!data) return;
+    setError(null);
 
-    const patch: Record<string, unknown> = {};
-    if (name !== (data.name ?? '')) patch.name = name;
-    if (ssid !== (data.ssid ?? '')) patch.ssid = ssid;
-    if (broadcast !== (data.ssidBroadcastEnabled !== false)) {
-      patch.ssidBroadcastEnabled = broadcast;
-    }
-    if (vlan !== (data.vlanId != null ? String(data.vlanId) : '')) {
-      const parsed = Number(vlan);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 4094) {
+    let parsedVlan: number | undefined;
+    if (vlan !== (accessVlan(data) != null ? String(accessVlan(data)) : '')) {
+      parsedVlan = Number(vlan);
+      if (!Number.isInteger(parsedVlan) || parsedVlan < 1 || parsedVlan > 4094) {
         setError('A VLAN id is a whole number between 1 and 4094.');
         return;
       }
-      patch.vlanId = parsed;
     }
-    if (passphrase) {
-      if (passphrase.length < 8) {
-        setError('A WPA passphrase is at least 8 characters.');
-        return;
-      }
-      // Carry the existing encryption settings through: SmartZone validates
-      // the whole encryption object, not the passphrase on its own.
-      patch.encryption = { ...(data.encryption ?? {}), passphrase };
+    if (passphrase && passphrase.length < 8) {
+      setError('A WPA passphrase is at least 8 characters.');
+      return;
     }
 
+    const patch = wlanPatch(data, {
+      name,
+      ssid,
+      broadcast,
+      accessVlan: parsedVlan,
+      passphrase: passphrase || undefined,
+    });
     if (Object.keys(patch).length === 0) return;
 
     setSaving(true);
-    setError(null);
     try {
       await update.mutateAsync(patch);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -108,7 +117,9 @@ export default function WlanDetailScreen() {
       Alert.alert('Saved', 'The controller has taken the change.');
     } catch (err) {
       setError(
-        err instanceof SmartZoneError ? err.displayMessage : 'The controller refused the change.',
+        err instanceof SmartZoneError
+          ? err.displayMessage
+          : 'The controller refused the change.',
       );
     } finally {
       setSaving(false);
@@ -166,6 +177,8 @@ export default function WlanDetailScreen() {
   }
 
   const security = firstNonEmpty(data.encryption?.method);
+  const open = isOpenWlan(data);
+  const currentPassphrase = data.encryption?.passphrase ?? undefined;
 
   return (
     <Screen
@@ -179,7 +192,7 @@ export default function WlanDetailScreen() {
       <Card style={{ gap: t.space.md }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Label variant="title">{firstNonEmpty(data.ssid, data.name)}</Label>
-          <Pill label={security} tone={/none/i.test(security) ? 'warn' : 'up'} />
+          <Pill label={security} tone={open ? 'warn' : 'up'} />
         </View>
         {data.description ? <Muted>{data.description}</Muted> : null}
       </Card>
@@ -202,15 +215,40 @@ export default function WlanDetailScreen() {
           value={vlan}
           onChangeText={setVlan}
           keyboardType="number-pad"
-          hint="1 to 4094."
+          hint="The access VLAN, 1 to 4094."
         />
       </Group>
 
-      {data.encryption?.method && !/none/i.test(data.encryption.method) ? (
+      {!open ? (
         <Group
           header="Passphrase"
-          footer="The controller never returns the current key, so this box is blank until you set a new one. Saving a new passphrase disconnects every client on this WLAN."
+          footer="Saving a new passphrase disconnects every client on this WLAN."
         >
+          {currentPassphrase ? (
+            <Row
+              title={revealed ? currentPassphrase : '••••••••••••'}
+              subtitle={revealed ? 'The current key' : 'Tap to reveal the current key'}
+              onPress={() => setRevealed((v) => !v)}
+              right={
+                revealed ? (
+                  <Button
+                    title="Copy"
+                    variant="plain"
+                    onPress={async () => {
+                      await Clipboard.setStringAsync(currentPassphrase);
+                      void Haptics.selectionAsync();
+                      Alert.alert('Copied', 'The passphrase is on the clipboard.');
+                    }}
+                  />
+                ) : null
+              }
+            />
+          ) : (
+            <Row
+              title="Not readable"
+              subtitle="This WLAN's key is not one the controller returns"
+            />
+          )}
           <Field
             label="New passphrase"
             value={passphrase}
@@ -223,26 +261,42 @@ export default function WlanDetailScreen() {
       ) : null}
 
       <Group header="Read only">
-        <Stat label="Zone" value={firstNonEmpty(zoneId)} mono />
+        <Stat label="Type" value={firstNonEmpty(data.type)} />
         <Stat label="Encryption" value={firstNonEmpty(data.encryption?.method)} />
         <Stat label="Algorithm" value={firstNonEmpty(data.encryption?.algorithm)} />
-        <Stat label="Per-device keys" value={data.dpskEnabled ? 'Enabled (DPSK)' : 'No'} />
+        <Stat label="Management frame protection" value={firstNonEmpty(data.encryption?.mfp)} />
         <Stat
           label="Client isolation"
-          value={data.clientIsolationEnabled ? 'On' : 'Off'}
+          value={data.advancedOptions?.clientIsolationEnabled ? 'On' : 'Off'}
+        />
+        <Stat
+          label="Per-device keys"
+          value={
+            isExternalDpskWlan(data)
+              ? 'External DPSK'
+              : isDpskWlan(data)
+                ? `Enabled · ${firstNonEmpty(data.dpsk?.dpskType)}`
+                : 'No'
+          }
         />
       </Group>
 
-      {data.dpskEnabled ? (
+      {isDpskWlan(data) && !isExternalDpskWlan(data) ? (
         <Group header="Dynamic PSKs">
           <Row
             title="Manage keys on this WLAN"
-            subtitle="Issue, share and revoke per-device passphrases"
-            onPress={() =>
-              router.push({ pathname: '/dpsk', params: { zoneId, wlanId: id } })
-            }
+            subtitle="Issue and revoke per-device passphrases"
+            onPress={() => router.push({ pathname: '/dpsk', params: { zoneId, wlanId: id } })}
           />
         </Group>
+      ) : isExternalDpskWlan(data) ? (
+        <Card style={{ gap: t.space.xs }}>
+          <Label variant="subhead">External DPSK</Label>
+          <Muted>
+            This WLAN&apos;s keys live on an external server rather than the
+            controller, so they cannot be managed from here.
+          </Muted>
+        </Card>
       ) : null}
 
       {error ? (

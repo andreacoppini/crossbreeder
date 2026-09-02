@@ -14,7 +14,7 @@ import { formatCount } from '@/utils/format';
 export default function MoreScreen() {
   const { activeProfile, profiles } = useControllers();
   const devices = useDevicesSummary();
-  const switchCount = devices.data?.switchTotalCount ?? 0;
+  const switchCount = devices.data?.totalSwitches ?? 0;
 
   return (
     <Screen scroll>
@@ -43,13 +43,13 @@ export default function MoreScreen() {
 
       <Group
         header="Wired"
-        footer="Switching is the next thing this app grows into. The API layer already speaks it; the screens are what is missing."
+        footer="Switching is the next thing this app grows into. The types and the client are in place; what is still missing is a switch API this controller answers on — every public path tried so far returns 404, even on a cluster that manages switches."
       >
         <Row
           title="Switches"
           subtitle={
             switchCount > 0
-              ? `${formatCount(switchCount)} ICX switches on this cluster`
+              ? `${formatCount(switchCount)} ICX switches registered on this cluster`
               : 'ICX switch management'
           }
           right={<Pill label="Coming soon" tone="accent" compact />}

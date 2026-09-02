@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, RefreshControl, View } from 'react-native';
 import { Stack } from 'expo-router';
-import { SmartZoneError, type Alarm, type SzEvent } from '@/api';
+import { SmartZoneError, isAcknowledged, type Alarm, type SzEvent } from '@/api';
 import { useAlarmActions, useAlarms, useEvents } from '@/hooks/queries';
 import {
   Card,
@@ -45,7 +45,7 @@ export default function AlarmsScreen() {
 
   const acknowledge = useCallback(
     (alarm: Alarm) => {
-      const id = alarm.id ?? alarm.alarmId;
+      const id = alarm.id;
       if (!id) return;
       Alert.alert(
         'Acknowledge this alarm?',
@@ -137,14 +137,18 @@ export default function AlarmsScreen() {
           }
           renderItem={({ item }) => {
             const tone = severityTone(item.severity);
-            const acknowledged = 'acknowledged' in item && item.acknowledged;
+            // `acknowledged` is the string "Yes"/"No", not a boolean; reading
+            // it as truthy would mark every open alarm as acknowledged.
+            const acknowledged = tab === 'alarms' && isAcknowledged(item as Alarm);
+            const kind =
+              'alarmType' in item ? item.alarmType : (item as SzEvent).eventType;
             return (
               <Card padded={false}>
                 <Row
                   tone={tone}
-                  title={firstNonEmpty(item.activity, item.description, 'Event')}
-                  subtitle={firstNonEmpty(item.entityName, item.zoneName)}
-                  detail={<Muted>{formatRelative(item.datetime)}</Muted>}
+                  title={firstNonEmpty(item.activity, kind, 'Event')}
+                  subtitle={firstNonEmpty(kind, item.category)}
+                  detail={<Muted>{formatRelative(item.insertionTime)}</Muted>}
                   right={
                     <Pill
                       label={acknowledged ? 'Acked' : (item.severity ?? '—')}

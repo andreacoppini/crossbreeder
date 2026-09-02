@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SmartZoneError, signalVerdict, type ClientRow } from '@/api';
+import {
+  SmartZoneError,
+  bandForClient,
+  sessionDuration,
+  signalVerdict,
+  type ClientRow,
+} from '@/api';
 import { useClientList, useZones } from '@/hooks/queries';
 import {
   Card,
@@ -56,7 +62,8 @@ export default function ClientsScreen() {
     ssid: params.ssid,
     sortColumn: sort,
     // Weakest signal first is the useful direction; everything else reads
-    // better ascending.
+    // better ascending. `sessionDuration` is accepted as a sort column even
+    // though the controller does not return it as a field.
     sortDir: sort === 'rssi' ? 'ASC' : sort === 'sessionDuration' ? 'DESC' : 'ASC',
   });
 
@@ -159,6 +166,7 @@ export default function ClientsScreen() {
 function ClientCard({ client }: { client: ClientRow }) {
   const verdict = signalVerdict(client);
   const tone = VERDICT_TONE[verdict] ?? 'neutral';
+  const duration = sessionDuration(client);
 
   return (
     <Card padded={false}>
@@ -168,10 +176,8 @@ function ClientCard({ client }: { client: ClientRow }) {
         subtitle={`${firstNonEmpty(client.ssid)} · ${firstNonEmpty(client.apName)}`}
         detail={
           <Muted>
-            {formatBand(client.radioType)} · {formatRssi(client.rssi)}
-            {client.sessionDuration != null
-              ? ` · ${formatDuration(client.sessionDuration)}`
-              : ''}
+            {bandForClient(client) ?? 'Band unknown'} · {formatRssi(client.rssi)}
+            {duration != null ? ` · ${formatDuration(duration)}` : ''}
           </Muted>
         }
         right={<Pill label={verdict} tone={tone} compact />}

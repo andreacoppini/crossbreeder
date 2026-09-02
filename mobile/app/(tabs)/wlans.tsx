@@ -84,7 +84,7 @@ export default function WlansScreen() {
       ) : (
         <FlatList
           data={wlans}
-          keyExtractor={(item, i) => `${item.zoneId}-${item.id ?? i}`}
+          keyExtractor={(item, i) => `${item.zoneId}-${item.wlanId ?? i}`}
           contentContainerStyle={{ padding: t.space.lg, paddingTop: t.space.sm, gap: t.space.sm }}
           refreshControl={
             <RefreshControl
@@ -134,15 +134,15 @@ function WlanCard({ wlan }: { wlan: WlanRow }) {
           <Muted>
             {formatCount(wlan.clients ?? 0)} clients
             {wlan.traffic != null ? ` · ${formatBytes(wlan.traffic)}` : ''}
-            {wlan.vlanId != null ? ` · VLAN ${wlan.vlanId}` : ''}
+            {wlan.vlan != null ? ` · VLAN ${wlan.vlan}` : ''}
           </Muted>
         }
         right={<Pill label={security} tone={open ? 'warn' : 'up'} compact />}
         onPress={() =>
-          wlan.id && wlan.zoneId
+          wlan.wlanId && wlan.zoneId
             ? router.push({
                 pathname: '/wlan/[zoneId]/[id]',
-                params: { zoneId: wlan.zoneId, id: wlan.id },
+                params: { zoneId: wlan.zoneId, id: wlan.wlanId },
               })
             : undefined
         }

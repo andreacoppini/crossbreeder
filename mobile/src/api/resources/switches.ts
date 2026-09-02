@@ -1,19 +1,28 @@
 /**
  * ICX switch management.
  *
- * Deliberately a stub. Switching is the next thing this app grows into, and
- * the shape of that growth is settled here so it does not disturb anything
- * later: the switch surface hangs off the same client, the same session and
- * the same query builder as Wi-Fi, and appears in the UI behind
- * `features.switching`.
+ * Deliberately a stub, and now an honest one. Switching is the next thing
+ * this app grows into, and the shape of that growth is settled here so it
+ * disturbs nothing later: the switch surface hangs off the same client, the
+ * same session and the same query builder as Wi-Fi.
  *
- * The endpoints below are the ones SmartZone actually exposes for switches;
- * they are typed and callable now, and what is missing is the screens, not
- * the plumbing.
+ * **The endpoint paths below are unverified.** Every candidate was probed
+ * against a SmartZone 7.1.1 cluster that manages 43 switches, and all of them
+ * answered 404: `/query/switch`, `/query/switches`, `/query/switchport`,
+ * `/query/switch/port`, `/switches`, `/switchgroups`, `/switchm/*`. So the
+ * switch API is either not on the `/wsg/api/public` tree at all on this
+ * release, or it needs a scope this admin account does not carry.
+ *
+ * Rather than ship paths that are known not to work, the calls below are
+ * marked and gated: `probe()` finds out what the controller answers before
+ * any screen is built on top of it. The types are still worth having — they
+ * are what the screens will render — and `SwitchPort.neighbourMacAddress` is
+ * the join that makes the interesting screen possible: the AP you are looking
+ * at, and the switch port it is powered from.
  */
 
 import type { SmartZoneClient } from '../client';
-import { withPath } from '../client';
+import { SmartZoneError } from '../errors';
 import { queryPage, type BuildCriteriaInput } from '../query';
 
 export interface SwitchRow {
@@ -30,7 +39,6 @@ export interface SwitchRow {
   domainId?: string;
   uptime?: number;
   numOfUnits?: number;
-  /** Port counts the summary card would show. */
   portStatusUp?: number;
   portStatusDown?: number;
   portStatusWarning?: number;
@@ -50,7 +58,7 @@ export interface SwitchPort {
   poeEnabled?: boolean;
   poeUsage?: number;
   neighbourName?: string;
-  /** Set when an AP is hanging off this port, which is the join we want. */
+  /** Set when an AP hangs off this port. The join worth building on. */
   neighbourMacAddress?: string;
 }
 
@@ -61,23 +69,51 @@ export interface SwitchGroup {
   domainId?: string;
 }
 
+/** Candidate paths, in the order worth trying. None confirmed yet. */
+export const SWITCH_QUERY_CANDIDATES = [
+  '/query/switch',
+  '/query/switches',
+  '/switchm/switch/query',
+] as const;
+
+export interface SwitchSupport {
+  available: boolean;
+  /** The path that answered, once one does. */
+  path?: string;
+  detail: string;
+}
+
 export function switchesApi(client: SmartZoneClient) {
   return {
-    /** One page of switches. Mirrors `apsApi.query`. */
-    query(input: BuildCriteriaInput, signal?: AbortSignal) {
-      return queryPage<SwitchRow>(client, '/query/switch', input, signal);
+    /**
+     * Find out whether this controller exposes a switch query at all, and
+     * where. Cheap, and the honest way to decide whether to show the tab.
+     */
+    async probe(signal?: AbortSignal): Promise<SwitchSupport> {
+      for (const path of SWITCH_QUERY_CANDIDATES) {
+        try {
+          await queryPage<SwitchRow>(client, path, { pageSize: 1 }, signal);
+          return { available: true, path, detail: `Switch data is at ${path}.` };
+        } catch (err) {
+          if (err instanceof SmartZoneError && err.kind === 'notFound') continue;
+          // Anything other than "no such endpoint" — a permission problem,
+          // say — is worth reporting rather than swallowing.
+          if (err instanceof SmartZoneError) {
+            return { available: false, detail: err.displayMessage };
+          }
+          throw err;
+        }
+      }
+      return {
+        available: false,
+        detail:
+          'This controller does not expose switch management on the public API paths this app knows.',
+      };
     },
 
-    ports(input: BuildCriteriaInput, signal?: AbortSignal) {
-      return queryPage<SwitchPort>(client, '/query/switch/port', input, signal);
-    },
-
-    get(id: string, signal?: AbortSignal) {
-      return client.get<SwitchRow>(withPath('/switches/{id}', { id }), { signal });
-    },
-
-    groups(signal?: AbortSignal) {
-      return client.listAll<SwitchGroup>('/switchgroups', { signal });
+    /** One page of switches, once `probe` has found a working path. */
+    query(path: string, input: BuildCriteriaInput, signal?: AbortSignal) {
+      return queryPage<SwitchRow>(client, path, input, signal);
     },
   };
 }

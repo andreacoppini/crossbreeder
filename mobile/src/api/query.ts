@@ -9,36 +9,65 @@
 
 import type { SmartZoneClient } from './client';
 
-/** Scope filters. `type` picks the dimension, `value` the object's id. */
-export type QueryFilterType =
+/**
+ * `filters` and `extraFilters` accept *different* sets of types, and the
+ * controller enforces the difference: `CLIENT` or `SSID` in `filters` is a
+ * 400, not a filter that is quietly ignored.
+ *
+ * Both enums were read off a SmartZone 7.1.1 cluster by sending a
+ * deliberately invalid type and reading the accepted set back out of the
+ * error message.
+ */
+
+/** Valid in `filters`: the scope dimensions. */
+export type QueryScopeFilterType =
   | 'CONTROLBLADE'
   | 'DOMAIN'
   | 'ZONE'
   | 'APGROUP'
   | 'AP'
-  | 'WLAN'
-  | 'WLANGROUP'
   | 'INDOORMAP'
   | 'SYNCEDSTATUS'
-  | 'REGISTRATIONSTATE'
-  | 'STATUS'
+  | 'REGISTRATIONSTATE';
+
+/** Valid in `extraFilters`: the attribute dimensions, a superset. */
+export type QueryExtraFilterType =
+  | QueryScopeFilterType
+  | 'DATABLADE'
+  | 'DATABLADEIPADDRESS'
+  | 'THIRD_PARTY_ZONE'
+  | 'WLANGROUP'
+  | 'WLAN'
+  | 'WLANID'
   | 'SSID'
   | 'CLIENT'
-  | 'USER'
-  | 'OSTYPE'
-  | 'SEVERITY'
-  | 'ACKNOWLEDGED'
-  | 'ALARMSTATE'
-  | 'APIPADDRESS'
   | 'CLIENTIPADDRESS'
-  | 'DEVICENAME'
-  | 'SWITCH'
-  | 'TIMERANGE';
+  | 'APIPADDRESS'
+  | 'OSTYPE'
+  | 'STATUS'
+  | 'CATEGORY'
+  | 'RADIOID'
+  | 'PORT'
+  | 'APP'
+  | 'GATEWAY'
+  | 'TIMERANGE'
+  | 'CP'
+  | 'DP'
+  | 'CLUSTER'
+  | 'NODE'
+  | 'BLADE';
+
+export type QueryFilterType = QueryExtraFilterType;
 
 export interface QueryFilter {
   type: QueryFilterType;
   value: string;
   operator?: 'eq' | 'ne' | 'gt' | 'lt' | 'ge' | 'le' | 'like';
+}
+
+/** A filter that is safe to put in the `filters` slot. */
+export interface QueryScopeFilter extends QueryFilter {
+  type: QueryScopeFilterType;
 }
 
 export interface SortInfo {
@@ -51,6 +80,11 @@ export interface QueryCriteria {
   page?: number;
   limit?: number;
   fullTextSearch?: { type: 'AND' | 'OR'; value: string };
+  /**
+   * Deliberately unused. A 7.1.1 cluster answers an `attributes` projection
+   * with rows missing the very fields it was asked for, so asking for less
+   * costs correctness and saves nothing worth having.
+   */
   attributes?: string[];
   sortInfo?: SortInfo;
   filters?: QueryFilter[];

@@ -22,10 +22,16 @@ type StatusFilter = 'all' | 'Online' | 'Flagged' | 'Offline';
 /**
  * The AP list.
  *
- * Search, filtering and paging all happen on the controller: a cluster with
- * three thousand APs costs one request per screenful, not a download. What
- * the row shows is chosen for a phone held at arm's length — name, status,
- * client count — with the identifying detail (MAC, model, zone) underneath.
+ * Search, sorting and paging happen on the controller: a cluster with three
+ * thousand APs costs one request per screenful, not a download.
+ *
+ * Status is the exception, and it is worth being explicit about why. A
+ * `STATUS` filter is accepted by a 7.1.1 controller and then matches nothing,
+ * so filtering server-side would show an empty list and imply there are no
+ * offline APs — the worst possible wrong answer here. Instead, picking a
+ * status sorts the controller-side query by status so the ones you want load
+ * first, and narrows what has been loaded. The header says how many of the
+ * cluster that is, so nobody mistakes a screenful for the whole estate.
  */
 export default function ApsScreen() {
   const t = useTheme();
@@ -41,13 +47,18 @@ export default function ApsScreen() {
   const query = useApList({
     search,
     zoneId,
-    status: status === 'all' ? undefined : status,
-    sortColumn: 'deviceName',
+    sortColumn: status === 'all' ? 'deviceName' : 'status',
+    // "Offline" sorts before "Online" ascending; "Online" needs the reverse.
+    sortDir: status === 'Online' ? 'DESC' : 'ASC',
   });
 
-  const aps = useMemo(
+  const loaded = useMemo(
     () => query.data?.pages.flatMap((page) => page.list ?? []) ?? [],
     [query.data],
+  );
+  const aps = useMemo(
+    () => (status === 'all' ? loaded : loaded.filter((ap) => ap.status === status)),
+    [loaded, status],
   );
   const total = query.data?.pages[0]?.totalCount ?? 0;
 
@@ -61,7 +72,7 @@ export default function ApsScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.sm, gap: t.space.sm }}>
+      <View style={{ paddingHorizontal: t.space.lg, paddingTop: t.space.sm }}>
         <Field
           label=""
           value={search}
@@ -122,21 +133,35 @@ export default function ApsScreen() {
           }}
           ListHeaderComponent={
             <Muted>
-              {formatCount(total)} access point{total === 1 ? '' : 's'}
+              {status === 'all'
+                ? `${formatCount(total)} access point${total === 1 ? '' : 's'}`
+                : `${formatCount(aps.length)} ${status.toLowerCase()} of ${formatCount(
+                    loaded.length,
+                  )} loaded · ${formatCount(total)} in this scope`}
             </Muted>
           }
           ListEmptyComponent={
             <EmptyState
-              title="Nothing matches"
+              title={status === 'all' ? 'Nothing matches' : `No ${status.toLowerCase()} APs loaded`}
               message={
-                search
-                  ? 'No access point matches that search in this scope.'
-                  : 'This scope has no access points.'
+                status === 'all'
+                  ? search
+                    ? 'No access point matches that search in this scope.'
+                    : 'This scope has no access points.'
+                  : 'Scroll to load more of the cluster, or use the Overview for exact counts.'
               }
             />
           }
           ListFooterComponent={
-            query.isFetchingNextPage ? <Loading /> : <View style={{ height: t.space.xl }} />
+            query.isFetchingNextPage ? (
+              <Loading />
+            ) : query.hasNextPage ? (
+              <View style={{ padding: t.space.md, alignItems: 'center' }}>
+                <Muted>Scroll for more</Muted>
+              </View>
+            ) : (
+              <View style={{ height: t.space.xl }} />
+            )
           }
           renderItem={({ item }) => <ApCard ap={item} />}
         />
@@ -159,7 +184,7 @@ function ApCard({ ap }: { ap: ApRow }) {
             {ap.apGroupName ? ` · ${ap.apGroupName}` : ''}
             {ap.status === 'Online'
               ? ` · ${formatCount(ap.numClients ?? 0)} clients`
-              : ` · last seen ${formatRelative(ap.lastSeenTime)}`}
+              : ` · last seen ${formatRelative(ap.lastSeen)}`}
           </Muted>
         }
         right={<Pill label={ap.status ?? 'Unknown'} tone={tone} compact />}

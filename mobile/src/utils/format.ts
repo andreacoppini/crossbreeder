@@ -114,7 +114,13 @@ export function formatCount(value?: number): string {
   return value.toLocaleString();
 }
 
-/** SmartZone's radio identifiers, shortened for a phone. */
+/**
+ * SmartZone's radio identifiers, shortened for a phone.
+ *
+ * Used for the AP endpoints, which name their radios properly. The client
+ * endpoint does not: its `radioType` is a PHY string like "a/n/ac/ax/be", so
+ * a client's band comes from `bandForClient` in the clients module instead.
+ */
 export function formatBand(radio?: string): string {
   switch (radio) {
     case '2.4G':
@@ -131,10 +137,29 @@ export function formatBand(radio?: string): string {
   }
 }
 
-/** Fall back through a chain of maybe-empty strings. */
+/** The PHY a client negotiated, tidied up for display. */
+export function formatPhy(radioType?: string): string {
+  if (!radioType) return '—';
+  // "a/n/ac/ax/be" reads better as "Wi-Fi 7 (be)" but the generation mapping
+  // is not worth getting wrong; show the letters the controller reported.
+  return `802.11${radioType}`;
+}
+
+/**
+ * Fall back through a chain of maybe-empty strings.
+ *
+ * SmartZone fills some fields with the literal string "N/A" rather than
+ * leaving them out — `userName` on a client with no identity is the common
+ * one — so that counts as empty here. Showing "N/A" as if it were a username
+ * is worse than showing nothing.
+ */
 export function firstNonEmpty(...values: (string | undefined | null)[]): string {
   for (const value of values) {
-    if (value && value.trim()) return value.trim();
+    if (!value) continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (/^(n\/a|none|null|undefined)$/i.test(trimmed)) continue;
+    return trimmed;
   }
   return '—';
 }

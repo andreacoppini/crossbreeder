@@ -1,10 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { RefreshControl, View } from 'react-native';
 import { router } from 'expo-router';
+import { SmartZoneError, alarmTotal, apCapacityUsed, isAcknowledged } from '@/api';
 import { useControllers } from '@/controllers/ControllerProvider';
 import {
   useAlarmSummary,
   useAlarms,
+  useApStatusCounts,
   useDevicesSummary,
 } from '@/hooks/queries';
 import {
@@ -12,6 +14,7 @@ import {
   ErrorState,
   Group,
   Label,
+  Loading,
   Metric,
   Muted,
   Pill,
@@ -19,19 +22,23 @@ import {
   Screen,
 } from '@/ui/components';
 import { severityTone, useTheme } from '@/ui/theme';
-import { formatCount, formatRelative } from '@/utils/format';
-import { SmartZoneError } from '@/api';
+import { firstNonEmpty, formatCount, formatRelative } from '@/utils/format';
 
 /**
  * The screen the app opens on: is anything wrong, and how wrong.
  *
- * Offline APs and outstanding alarms come first because they are the two
- * questions that get asked; the totals underneath are context, not the point.
+ * The AP status figures are counted from the AP query rather than read from
+ * `devicesSummary`, which has no health breakdown at all — on the cluster
+ * this was built against it reports 287 APs while the AP query finds 549
+ * online, so the two count different things and neither is a health number.
+ * Counting costs a few requests, which is why this is refreshed on a pull
+ * rather than on a timer.
  */
 export default function OverviewScreen() {
   const t = useTheme();
   const { activeProfile, session } = useControllers();
   const devices = useDevicesSummary();
+  const counts = useApStatusCounts();
   const alarmSummary = useAlarmSummary();
   const alarms = useAlarms({ pageSize: 5 });
 
@@ -40,19 +47,16 @@ export default function OverviewScreen() {
     setRefreshing(true);
     await Promise.allSettled([
       devices.refetch(),
+      counts.refetch(),
       alarmSummary.refetch(),
       alarms.refetch(),
     ]);
     setRefreshing(false);
-  }, [alarmSummary, alarms, devices]);
-
-  const summary = devices.data;
-  const online = summary?.apOnlineCount ?? 0;
-  const offline = summary?.apOfflineCount ?? 0;
-  const flagged = summary?.apFlaggedCount ?? 0;
-  const total = summary?.apTotalCount ?? online + offline + flagged;
+  }, [alarmSummary, alarms, counts, devices]);
 
   const recentAlarms = alarms.data?.pages.flatMap((p) => p.list ?? []) ?? [];
+  const outstanding = alarmTotal(alarmSummary.data);
+  const capacityUsed = apCapacityUsed(devices.data);
 
   return (
     <Screen
@@ -69,62 +73,72 @@ export default function OverviewScreen() {
         </Muted>
       </View>
 
-      {devices.isError ? (
+      {counts.isError ? (
         <ErrorState
           message={
-            devices.error instanceof SmartZoneError
-              ? devices.error.displayMessage
-              : 'Could not read the cluster summary.'
+            counts.error instanceof SmartZoneError
+              ? counts.error.displayMessage
+              : 'Could not count the access points.'
           }
-          onRetry={() => void devices.refetch()}
+          onRetry={() => void counts.refetch()}
         />
-      ) : (
+      ) : counts.isLoading ? (
         <Card>
+          <Loading label="Counting access points" />
+        </Card>
+      ) : (
+        <Card style={{ gap: t.space.sm }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Metric
-              value={formatCount(online)}
-              caption="APs online"
+              value={formatCount(counts.data?.online)}
+              caption="Online"
               tone="up"
-              onPress={() => router.push({ pathname: '/(tabs)/aps', params: { status: 'Online' } })}
+              onPress={() => router.push('/(tabs)/aps')}
             />
             <Metric
-              value={formatCount(flagged)}
+              value={formatCount(counts.data?.flagged)}
               caption="Flagged"
-              tone={flagged > 0 ? 'warn' : 'neutral'}
-              onPress={() => router.push({ pathname: '/(tabs)/aps', params: { status: 'Flagged' } })}
+              tone={(counts.data?.flagged ?? 0) > 0 ? 'warn' : 'neutral'}
+              onPress={() => router.push('/(tabs)/aps')}
             />
             <Metric
-              value={formatCount(offline)}
+              value={formatCount(counts.data?.offline)}
               caption="Offline"
-              tone={offline > 0 ? 'down' : 'neutral'}
-              onPress={() => router.push({ pathname: '/(tabs)/aps', params: { status: 'Offline' } })}
+              tone={(counts.data?.offline ?? 0) > 0 ? 'down' : 'neutral'}
+              onPress={() => router.push('/(tabs)/aps')}
             />
           </View>
           <Muted>
-            {formatCount(total)} access points ·{' '}
-            {formatCount(summary?.clientCount)} clients connected
+            {formatCount(counts.data?.total)} access points
+            {counts.data?.truncated
+              ? ' counted so far — this cluster is larger than one sweep'
+              : ' on this cluster'}
           </Muted>
         </Card>
       )}
 
-      {summary?.switchTotalCount ? (
-        <Card style={{ gap: t.space.sm }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <Label variant="headline">Switches</Label>
-            <Pill label="Coming soon" tone="accent" compact />
-          </View>
-          <Muted>
-            This cluster manages {formatCount(summary.switchTotalCount)} ICX
-            switches. Switch management is the next thing this app grows into;
-            for now they are visible in the controller only.
-          </Muted>
-        </Card>
+      {devices.data ? (
+        <Group header="Inventory">
+          <Row
+            title="Access points"
+            subtitle={`${formatCount(devices.data.totalAps)} registered${
+              capacityUsed != null ? ` · ${capacityUsed}% of licensed capacity` : ''
+            }`}
+          />
+          <Row
+            title="Switches"
+            subtitle={
+              devices.data.totalSwitches
+                ? `${formatCount(devices.data.totalSwitches)} registered`
+                : 'None on this cluster'
+            }
+            right={
+              devices.data.totalSwitches ? (
+                <Pill label="Coming soon" tone="accent" compact />
+              ) : null
+            }
+          />
+        </Group>
       ) : null}
 
       <Group
@@ -133,27 +147,43 @@ export default function OverviewScreen() {
           alarmSummary.data
             ? `${formatCount(alarmSummary.data.criticalCount)} critical · ${formatCount(
                 alarmSummary.data.majorCount,
-              )} major · ${formatCount(alarmSummary.data.minorCount)} minor`
+              )} major · ${formatCount(alarmSummary.data.minorCount)} minor · ${formatCount(
+                alarmSummary.data.warningCount,
+              )} warning`
             : undefined
         }
       >
-        {recentAlarms.length === 0 ? (
+        {alarms.isLoading ? (
+          <Row title="Reading alarms…" />
+        ) : recentAlarms.length === 0 ? (
           <Row title="Nothing outstanding" subtitle="No alarms on this cluster" tone="up" />
         ) : (
           recentAlarms.slice(0, 5).map((alarm, i) => (
             <Row
-              key={alarm.id ?? alarm.alarmId ?? i}
-              title={alarm.activity ?? alarm.description ?? 'Alarm'}
-              subtitle={`${alarm.entityName ?? alarm.zoneName ?? ''} · ${formatRelative(
-                alarm.datetime ?? alarm.firstAppearTime,
+              key={alarm.id ?? i}
+              title={firstNonEmpty(alarm.activity, alarm.alarmType, 'Alarm')}
+              subtitle={`${firstNonEmpty(alarm.category)} · ${formatRelative(
+                alarm.insertionTime,
               )}`}
               tone={severityTone(alarm.severity)}
-              right={<Pill label={alarm.severity ?? '—'} tone={severityTone(alarm.severity)} compact />}
+              right={
+                <Pill
+                  label={isAcknowledged(alarm) ? 'Acked' : (alarm.severity ?? '—')}
+                  tone={isAcknowledged(alarm) ? 'neutral' : severityTone(alarm.severity)}
+                  compact
+                />
+              }
               onPress={() => router.push('/alarms')}
             />
           ))
         )}
-        <Row title="All alarms and events" onPress={() => router.push('/alarms')} />
+        <Row
+          title="All alarms and events"
+          subtitle={
+            outstanding != null ? `${formatCount(outstanding)} outstanding` : undefined
+          }
+          onPress={() => router.push('/alarms')}
+        />
       </Group>
     </Screen>
   );

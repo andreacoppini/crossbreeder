@@ -23,9 +23,20 @@ export const SUPPORTED_API_VERSIONS = [
   'v11_0',
   'v11_1',
   'v12_0',
+  'v12_1',
   'v13_0',
+  'v13_1',
   'v14_0',
 ] as const;
+
+/**
+ * The newest version this app was built against. Anything the controller
+ * offers at or below this is fair game; anything above it is a SmartZone
+ * newer than this build, and guessing at it is how a release breaks.
+ *
+ * Verified against a 7.1.1 cluster, which offers up to `v13_1`.
+ */
+export const MAX_KNOWN_API_VERSION = 'v14_0';
 
 export const DEFAULT_API_PORT = 8443;
 
@@ -77,17 +88,23 @@ interface RequestOptions {
  */
 export function pickApiVersion(offered: string[] | undefined): string {
   if (!offered || offered.length === 0) return FALLBACK_API_VERSION;
-  const known = new Set<string>(SUPPORTED_API_VERSIONS);
-  const usable = offered.filter((v) => known.has(v));
-  if (usable.length === 0) {
-    // The controller is newer or older than anything we were built against.
-    // Prefer the newest it offers over failing outright: the endpoints this
-    // app uses have been stable across versions.
-    const sorted = [...offered].sort(compareApiVersions);
-    return sorted[sorted.length - 1] ?? FALLBACK_API_VERSION;
+
+  const sorted = [...offered].sort(compareApiVersions);
+
+  // The newest the controller offers that we were built against. A ceiling
+  // rather than an exact-match list, so a point release we have never heard
+  // of (a 7.1 cluster offers v13_1, which no published list of ours names)
+  // is still used instead of silently dropping back a version.
+  const withinKnown = sorted.filter(
+    (v) => compareApiVersions(v, MAX_KNOWN_API_VERSION) <= 0,
+  );
+  if (withinKnown.length > 0) {
+    return withinKnown[withinKnown.length - 1] ?? FALLBACK_API_VERSION;
   }
-  usable.sort(compareApiVersions);
-  return usable[usable.length - 1] ?? FALLBACK_API_VERSION;
+
+  // Everything on offer is newer than this build knows. Take the oldest,
+  // which is the one closest to what we were written against.
+  return sorted[0] ?? FALLBACK_API_VERSION;
 }
 
 export function compareApiVersions(a: string, b: string): number {
