@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "SmartZone Console",
+    "slug": "smartzone-console",
+    "version": "0.1.0",
+    "orientation": "default",
+    "scheme": "szconsole",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tacoppini.smartzoneconsole",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scanning a controller's QR code fills in its address so you do not have to type it.",
+        "NSFaceIDUsageDescription": "Unlocks the saved administrator password for your controllers."
+      }
+    },
+    "android": {
+      "package": "com.tacoppini.smartzoneconsole",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B6BCB",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scanning a controller's QR code fills in its address so you do not have to type it."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlocks the saved administrator password for your controllers."
+        }
+      ],
+      "expo-splash-screen",
+      "./plugins/withControllerTrust"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

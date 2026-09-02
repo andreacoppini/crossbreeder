@@ -145,6 +145,7 @@ as needing one and skipped, rather than being guessed at.
 | Path | |
 |---|---|
 | `engine/` | Crossbreeder Plus — the Go source, tests and browser console |
+| `mobile/` | SmartZone Console — the iOS and Android app for controller-managed sites |
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
@@ -152,6 +153,14 @@ as needing one and skipped, rather than being guessed at.
 | `*.xojo_*`, `Crossbreeder-*.zip` | an older export of it, and the last builds |
 
 Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
+
+## Controller-managed sites
+
+Crossbreeder works standalone APs, with no controller in the picture. Where a
+site *is* controller-managed, [`mobile/`](mobile/README.md) is a native iOS and
+Android app for Ruckus SmartZone: access points, WLANs and their groups,
+dynamic PSKs, and client troubleshooting, over SmartZone's public API. It is a
+separate product sharing this repository, not part of the Go engine.
 
 ## The original Crossbreeder
 
