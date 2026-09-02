@@ -1,7 +1,7 @@
 import React from 'react';
-import { Redirect, Tabs } from 'expo-router';
+import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useControllers } from '@/controllers/ControllerProvider';
+import { ConnectedOnly } from '@/controllers/ConnectedOnly';
 import { useTheme } from '@/ui/theme';
 
 /**
@@ -11,12 +11,27 @@ import { useTheme } from '@/ui/theme';
  * problem; everything else — DPSKs, zones, alarms, diagnostics, and switching
  * when it lands — lives one level down under More, where it can grow without
  * the tab bar turning into a menu.
+ *
+ * This layout is also the gate on being connected, and it is the *only* gate:
+ * a route group adds no path segment, so this group's `index` is the app's
+ * `/`. An `app/index.tsx` beside it would claim the same route, and two
+ * screens redirecting to each other's idea of `/` is an app that hangs on
+ * launch. There is deliberately no such file.
+ *
+ * While a connection is being established this renders in place rather than
+ * redirecting, so a cold start does not flash the controller list on its way
+ * to the overview.
  */
 export default function TabsLayout() {
-  const t = useTheme();
-  const { state } = useControllers();
+  return (
+    <ConnectedOnly>
+      <ConnectedTabs />
+    </ConnectedOnly>
+  );
+}
 
-  if (state !== 'connected') return <Redirect href="/" />;
+function ConnectedTabs() {
+  const t = useTheme();
 
   return (
     <Tabs

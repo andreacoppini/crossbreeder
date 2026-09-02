@@ -258,7 +258,16 @@ export function Divider() {
   );
 }
 
-/** A grouped list, iOS-style: one card, hairlines between rows. */
+/**
+ * A grouped list, iOS-style: one card, hairlines between rows.
+ *
+ * The card itself is unpadded so that a pressable `Row` can fill its width
+ * and highlight edge to edge. `Row` and `Stat` therefore carry their own
+ * insets — and anything else put in a group would otherwise sit flush against
+ * the card's border, which is what a `Field` in a form section did. Rather
+ * than leave that as a trap for every future caller, a child that does not
+ * pad itself gets padded here.
+ */
 export function Group({
   header,
   footer,
@@ -270,6 +279,7 @@ export function Group({
 }) {
   const t = useTheme();
   const items = React.Children.toArray(children).filter(Boolean);
+
   return (
     <View style={{ gap: t.space.sm }}>
       {header ? (
@@ -288,17 +298,35 @@ export function Group({
         </Text>
       ) : null}
       <Card padded={false}>
-        {items.map((child, i) => (
-          <View key={i}>
-            {i > 0 ? <Divider /> : null}
-            {child}
-          </View>
-        ))}
+        {items.map((child, i) => {
+          const selfPadded =
+            React.isValidElement(child) && SELF_PADDED.has(child.type as unknown);
+          return (
+            <View key={i}>
+              {i > 0 ? <Divider /> : null}
+              {selfPadded ? (
+                child
+              ) : (
+                <View
+                  style={{
+                    paddingHorizontal: t.space.lg,
+                    paddingVertical: t.space.md,
+                  }}
+                >
+                  {child}
+                </View>
+              )}
+            </View>
+          );
+        })}
       </Card>
       {footer ? <Muted>{footer}</Muted> : null}
     </View>
   );
 }
+
+/** Components that already inset themselves inside an unpadded card. */
+const SELF_PADDED: Set<unknown> = new Set([Row, Stat]);
 
 export function Button({
   title,

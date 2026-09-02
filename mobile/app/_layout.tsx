@@ -1,10 +1,11 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ControllerProvider } from '@/controllers/ControllerProvider';
+import { ErrorState, Screen } from '@/ui/components';
 import { useTheme } from '@/ui/theme';
 
 /**
@@ -38,7 +39,6 @@ function RootStack() {
           contentStyle: { backgroundColor: t.colors.background },
         }}
       >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="connect" options={{ headerShown: false }} />
         <Stack.Screen
@@ -61,5 +61,24 @@ export default function RootLayout() {
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * expo-router renders this instead of unmounting the tree when a screen
+ * throws. Without it a crash is a white screen, which tells the operator
+ * nothing and cannot be reported.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <SafeAreaProvider>
+      <Screen scroll>
+        <ErrorState
+          message={error.message}
+          hint="This is a fault in the app rather than in the controller. Going back and trying again usually works."
+          onRetry={() => void retry()}
+        />
+      </Screen>
+    </SafeAreaProvider>
   );
 }

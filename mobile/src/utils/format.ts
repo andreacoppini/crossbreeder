@@ -61,6 +61,30 @@ export function formatRelative(epoch?: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/**
+ * "in 20 days" from an epoch in the future.
+ *
+ * `formatRelative` is for things that have happened and answers "just now"
+ * for any future time, which quietly turns a key expiring next month into one
+ * expiring this instant. Anything forward-looking — a DPSK expiry, a
+ * scheduled upgrade — belongs here instead.
+ */
+export function formatUntil(epoch?: number): string {
+  const ms = normaliseEpoch(epoch);
+  if (ms == null) return '—';
+
+  const delta = ms - Date.now();
+  if (delta <= 0) return 'expired';
+
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 60) return `in ${Math.max(1, minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 60) return `in ${days} day${days === 1 ? '' : 's'}`;
+  return `on ${new Date(ms).toLocaleDateString()}`;
+}
+
 export function formatDateTime(epoch?: number): string {
   const ms = normaliseEpoch(epoch);
   if (ms == null) return '—';

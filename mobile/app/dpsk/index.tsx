@@ -4,6 +4,7 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { SmartZoneError, dpskToCsv, expiryDate, type Dpsk } from '@/api';
+import { ConnectedOnly } from '@/controllers/ConnectedOnly';
 import { useApi } from '@/controllers/ControllerProvider';
 import { useDpskList, useDpskMutations, useZones } from '@/hooks/queries';
 import {
@@ -27,7 +28,7 @@ import {
   formatCount,
   formatDateTime,
   formatMac,
-  formatRelative,
+  formatUntil,
 } from '@/utils/format';
 
 /**
@@ -45,6 +46,16 @@ import {
  * invent one they can never read back.
  */
 export default function DpskScreen() {
+  // Outside the tab layout, so this route carries its own gate: it calls
+  // useApi() directly, which throws until a controller is connected.
+  return (
+    <ConnectedOnly>
+      <DpskList />
+    </ConnectedOnly>
+  );
+}
+
+function DpskList() {
   const t = useTheme();
   const params = useLocalSearchParams<{ zoneId?: string; wlanId?: string }>();
   const api = useApi();
@@ -283,7 +294,11 @@ function DpskCard({
         detail={
           <Muted>
             {dpsk.vlanId != null ? `VLAN ${dpsk.vlanId} · ` : ''}
-            {expiry ? `expires ${formatRelative(expiry.getTime())}` : 'no expiry'}
+            {!expiry
+              ? 'no expiry'
+              : dpsk.expired || expiry.getTime() <= Date.now()
+                ? 'expired'
+                : `expires ${formatUntil(expiry.getTime())}`}
             {dpsk.group ? ' · shared key' : ''}
           </Muted>
         }

@@ -146,9 +146,19 @@ export default function AlarmsScreen() {
               <Card padded={false}>
                 <Row
                   tone={tone}
-                  title={firstNonEmpty(item.activity, kind, 'Event')}
-                  subtitle={firstNonEmpty(kind, item.category)}
-                  detail={<Muted>{formatRelative(item.insertionTime)}</Muted>}
+                  // The type is what an operator scans for; the controller's
+                  // sentence is the detail, and it is far too long to lead
+                  // with on a phone.
+                  title={firstNonEmpty(kind, item.activity, 'Event')}
+                  subtitle={
+                    <Muted numberOfLines={2}>{firstNonEmpty(item.activity)}</Muted>
+                  }
+                  detail={
+                    <Muted>
+                      {firstNonEmpty(item.category)} ·{' '}
+                      {formatRelative(item.insertionTime)}
+                    </Muted>
+                  }
                   right={
                     <Pill
                       label={acknowledged ? 'Acked' : (item.severity ?? '—')}

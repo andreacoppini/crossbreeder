@@ -161,7 +161,7 @@ export default function OverviewScreen() {
           recentAlarms.slice(0, 5).map((alarm, i) => (
             <Row
               key={alarm.id ?? i}
-              title={firstNonEmpty(alarm.activity, alarm.alarmType, 'Alarm')}
+              title={firstNonEmpty(alarm.alarmType, alarm.activity, 'Alarm')}
               subtitle={`${firstNonEmpty(alarm.category)} · ${formatRelative(
                 alarm.insertionTime,
               )}`}

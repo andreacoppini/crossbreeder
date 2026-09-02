@@ -22,7 +22,7 @@ export default function SignInScreen() {
   const [biometricTried, setBiometricTried] = useState(false);
 
   useEffect(() => {
-    if (state === 'connected') router.replace('/(tabs)');
+    if (state === 'connected') router.replace('/');
   }, [state]);
 
   /** Try the saved password behind a biometric check, once, on arrival. */

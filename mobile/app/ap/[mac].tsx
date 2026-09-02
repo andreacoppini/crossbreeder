@@ -284,6 +284,13 @@ export default function ApDetailScreen() {
   );
 }
 
+/**
+ * A radio's settings.
+ *
+ * Two lines rather than a label-and-value row: a channel, a client count, an
+ * airtime figure and a power setting do not fit beside a band name on a phone,
+ * and squeezing them into one line truncated the part that mattered.
+ */
 function RadioStat({
   band,
   channel,
@@ -292,22 +299,22 @@ function RadioStat({
   txPower,
 }: {
   band: string;
-  channel?: string;
+  channel?: string | null;
   clients?: number;
   airtime?: number;
   txPower?: string;
 }) {
   const parts = [
-    channel ? `Ch ${channel}` : null,
     clients != null ? `${formatCount(clients)} clients` : null,
     airtime != null ? `${Math.round(airtime)}% airtime` : null,
     txPower ? `${txPower} power` : null,
   ].filter(Boolean);
 
   return (
-    <Stat
-      label={formatBand(band)}
-      value={parts.length > 0 ? parts.join(' · ') : 'Not reported'}
+    <Row
+      title={formatBand(band)}
+      subtitle={channel ? `Channel ${channel}` : 'Not reported'}
+      detail={parts.length > 0 ? <Muted>{parts.join(' · ')}</Muted> : undefined}
     />
   );
 }

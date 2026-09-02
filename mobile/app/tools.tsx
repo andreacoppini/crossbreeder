@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { SmartZoneError } from '@/api';
+import { ConnectedOnly } from '@/controllers/ConnectedOnly';
 import { useApi } from '@/controllers/ControllerProvider';
 import { useApList } from '@/hooks/queries';
 import {
@@ -29,6 +30,16 @@ type Tool = 'ping' | 'traceroute';
  * fine.
  */
 export default function ToolsScreen() {
+  // Outside the tab layout, so this route carries its own gate: it calls
+  // useApi() directly, which throws until a controller is connected.
+  return (
+    <ConnectedOnly>
+      <Diagnostics />
+    </ConnectedOnly>
+  );
+}
+
+function Diagnostics() {
   const t = useTheme();
   const api = useApi();
 

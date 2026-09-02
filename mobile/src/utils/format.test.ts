@@ -1,8 +1,10 @@
 import {
+  firstNonEmpty,
   formatBytes,
   formatDuration,
   formatMac,
   formatRelative,
+  formatUntil,
   normaliseEpoch,
   normaliseMac,
 } from './format';
@@ -62,6 +64,45 @@ describe('formatRelative', () => {
 
   it('counts minutes', () => {
     expect(formatRelative(Date.now() - 12 * 60_000)).toBe('12 min ago');
+  });
+});
+
+describe('formatUntil', () => {
+  it('counts forward, where formatRelative cannot', () => {
+    // formatRelative answers "just now" for anything in the future, which
+    // would turn a key expiring next month into one expiring this instant.
+    expect(formatRelative(Date.now() + 20 * 86_400_000)).toBe('just now');
+    expect(formatUntil(Date.now() + 20 * 86_400_000)).toBe('in 20 days');
+  });
+
+  it('reads a past time as expired', () => {
+    expect(formatUntil(Date.now() - 1000)).toBe('expired');
+  });
+
+  it('steps through the units', () => {
+    expect(formatUntil(Date.now() + 30 * 60_000)).toBe('in 30 min');
+    expect(formatUntil(Date.now() + 5 * 3_600_000)).toBe('in 5h');
+    expect(formatUntil(Date.now() + 86_400_000 + 1000)).toBe('in 1 day');
+  });
+
+  it('gives a date once it is far out', () => {
+    expect(formatUntil(Date.now() + 200 * 86_400_000)).toMatch(/^on /);
+  });
+
+  it('answers for a missing value', () => {
+    expect(formatUntil(undefined)).toBe('—');
+    expect(formatUntil(0)).toBe('—');
+  });
+});
+
+describe('firstNonEmpty', () => {
+  it('treats the controller’s "N/A" filler as empty', () => {
+    expect(firstNonEmpty('N/A', 'real value')).toBe('real value');
+    expect(firstNonEmpty('N/A')).toBe('—');
+  });
+
+  it('takes the first thing that is actually there', () => {
+    expect(firstNonEmpty(undefined, '', '  ', 'here')).toBe('here');
   });
 });
 
