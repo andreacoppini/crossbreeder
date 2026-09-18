@@ -24,6 +24,27 @@ jobs:
       # creates the tag at that commit.
       - uses: actions/checkout@v4
 
+      # A changelog nobody is forced to write goes stale in two releases. The
+      # entry has to exist before the tag can be cut, and this fails the release
+      # rather than publishing a version the README does not mention.
+      - name: Check the changelog has an entry for this version
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          if ! grep -qF "What's new in ${VERSION} (" README.md; then
+            echo "::error::README.md has no changelog entry for ${VERSION}."
+            echo "Add a block to the Changelog section before releasing, e.g.:"
+            echo
+            echo "  What's new in ${VERSION} ($(date -u +%Y-%m-%d)):"
+            echo
+            echo '  ```'
+            echo "  *) component - what changed (#PR);"
+            echo '  ```'
+            exit 1
+          fi
+          echo "Changelog entry for ${VERSION} found."
+
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"

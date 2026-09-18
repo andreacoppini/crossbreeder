@@ -142,6 +142,58 @@ as needing one and skipped, rather than being guessed at.
 - **Exports CSV and JSON**, with a row for every address including the silent
   ones.
 
+## Changelog
+
+One line per change, newest first. `!)` marks something that changes behaviour
+you may be relying on; `*)` is everything else. The pull request has the detail
+and the reasoning.
+
+What's new in 1.0.5 (2026-08-28):
+
+```
+*) update - check GitHub for a newer release on launch; cached for a day, silent on failure (#12);
+*) login - try the factory-default super/sp-admin login by default, as the original does (#12);
+*) console - pin the console's defaults to the command line's so the two cannot drift apart (#12);
+```
+
+What's new in 1.0.4 (2026-08-27):
+
+```
+!) firmware - a firmware change locks out reboot and factory reset, which discarded the push (#11);
+*) login - set a forced password change to "Crossbreeder" unless told otherwise, as the original does (#11);
+*) login - separate switch for changing the password, so turning it off keeps the password typed (#11);
+*) login - refuse a new password under 8 characters once, before the run, not against every AP (#11);
+```
+
+What's new in 1.0.3 (2026-08-27):
+
+```
+*) release - the Windows binaries report an unmodified source tree again; v1.0.2 said otherwise (#10);
+```
+
+What's new in 1.0.2 (2026-08-27):
+
+```
+*) login - match the prompt strings the original Crossbreeder uses, not a reconstruction of them (#8);
+*) login - decline the Unleashed setup wizard, which stalled a factory-default AP indefinitely (#8);
+*) windows - stamp the version resource from the tag; earlier releases declared themselves 1.0.0 (#8);
+*) windows - build the arm64 version resource as an arm64 object, which broke the release (#9);
+```
+
+What's new in 1.0.1 (2026-08-26):
+
+```
+!) login - a forced password change no longer kills the run and everything after it (#7, #5);
+*) login - set a password on an AP that demands a change at first login, and carry on (#7);
+*) packaging - publish zipped Windows builds for networks that refuse an .exe download (#6);
+```
+
+What's new in 1.0.0 (2026-08-25):
+
+```
+*) first release: parallel engine, ping sweep, browser console, built-in image server;
+```
+
 ## Repository layout
 
 | Path | |
