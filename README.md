@@ -132,7 +132,9 @@ as needing one and skipped, rather than being guessed at.
   the image away.
 - **Hosts the firmware itself.** A push needs nothing installed beyond this
   binary: it serves the images, works out which of your addresses the APs can
-  actually reach, and shows what each one is downloading.
+  actually reach, and shows what each one is downloading. Put `%M` in the
+  filename — `%M_118.2.0.0.875.rcks` — and it becomes each AP's model, so one
+  run pushes the right file to a mixed estate.
 - **Follows the reboot.** After the first pass it keeps pinging and re-reading
   the version, so an AP that drops off reads as *rebooting* and one that returns
   on a new version is reported as *upgraded* — the push is confirmed rather than

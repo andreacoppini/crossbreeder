@@ -50,6 +50,14 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **`%M` can be used from the console again**
+  ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). The engine
+  has always expanded `%M` to the AP's model, but in **Internal** server mode
+  the console offered a fixed list of files found on disk, so there was no way
+  to type a template — the feature was reachable only from the command line or
+  in External mode. That field now takes a name as well as offering the list,
+  and reports which files in the folder a template actually matches.
+
 - **It now tells you when a newer version exists.** One request to GitHub on
   launch, the answer cached for a day, reported as a line after the run or a
   badge in the console. It never delays a run and stays silent on any failure —

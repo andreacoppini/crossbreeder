@@ -47,7 +47,7 @@ async function checkForUpdate() {
 
 // Everything except the passwords is remembered between sessions.
 const SAVE = [...FIELDS, 'alsoDefault', 'changePass', 'firmware', 'factory', 'reboot', 'command',
-  'srvMode', 'serveIp', 'fwFile', 'fwHost', 'fwUser', 'hosts', 'watch'];
+  'srvMode', 'serveIp', 'fwFile', 'fwFileSel', 'fwHost', 'fwUser', 'hosts', 'watch'];
 
 function persist() {
   const s = {};
@@ -247,34 +247,75 @@ function restoreMode() {
 }
 
 // Show the file that would actually be sent, rather than promising to pick one.
+// %M in a filename becomes the AP's model, so one run can push a different
+// image to each model. That only works if the field accepts something which is
+// not a file on disk, which is why this is a text input over a datalist rather
+// than a <select>: a select can only ever offer names that already exist.
+function templateToRe(name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^' + escaped.split('%M').join('.+') + '$', 'i');
+}
+
+// The last answer from /api/firmware, so the hint can be redrawn on every
+// keystroke without asking the server to re-read the folder each time.
+let lastFirmware = null;
+
+// Show the file that would actually be sent, rather than promising to pick one.
 async function refreshFirmware() {
   const dir = $('serveDir').value;
-  const sel = $('fwFileSel');
-  const hint = $('fwFileHint');
   try {
-    const r = await (await fetch('/api/firmware?dir=' + encodeURIComponent(dir))).json();
-    const chosen = sel.value;
-    sel.replaceChildren();
-    for (const c of r.candidates || []) {
-      const o = document.createElement('option');
-      o.value = c; o.textContent = c;
-      sel.appendChild(o);
-    }
-    if (r.error) {
-      hint.className = 'hint warn';
-      hint.textContent = r.error;
-      if (!r.candidates?.length) sel.replaceChildren(new Option('(nothing to push)', ''));
-      return;
-    }
-    sel.value = (r.candidates || []).includes(chosen) ? chosen : r.picked;
-    const auto = sel.value === r.picked;
-    const warn = /\.rcks$/i.test(sel.value) ? '' : (r.warn || '');
-    hint.className = warn ? 'hint warn' : 'hint';
-    hint.textContent = (auto ? `Picked automatically: ${r.reason}. ` : 'Chosen manually. ') + warn;
+    lastFirmware = await (await fetch('/api/firmware?dir=' + encodeURIComponent(dir))).json();
   } catch (e) {
+    lastFirmware = null;
+    const hint = $('fwFileHint');
     hint.className = 'hint warn';
     hint.textContent = 'Could not read that folder.';
+    return;
   }
+  const list = $('fwFileList');
+  list.replaceChildren();
+  for (const c of lastFirmware.candidates || []) list.appendChild(new Option(c, c));
+
+  // Only ever auto-fill an empty box. Once there is something in it — picked or
+  // typed — it belongs to the operator, and quietly swapping the file about to
+  // go to several hundred APs would be the wrong kind of helpful.
+  if (!$('fwFileSel').value.trim() && lastFirmware.picked) $('fwFileSel').value = lastFirmware.picked;
+  renderFirmwareHint();
+}
+
+function renderFirmwareHint() {
+  const hint = $('fwFileHint');
+  const r = lastFirmware;
+  if (!r) return;
+  const candidates = r.candidates || [];
+  const val = $('fwFileSel').value.trim();
+  const bareImage = val && !/\.rcks$/i.test(val) ? (r.warn || '') : '';
+
+  // r.error means the server could not pick a file on its own — most often
+  // because the folder holds several. That is a statement about auto-picking,
+  // not about what the operator typed: a folder of per-model files is exactly
+  // where a %M template belongs, so the error only stands while the box is
+  // empty. Reporting it over a valid entry was the first version of this.
+  if (!val) {
+    hint.className = 'hint warn';
+    hint.textContent = r.error || 'Nothing to push: name a file, or one containing %M.';
+    return;
+  }
+  if (val.includes('%M')) {
+    const hits = candidates.filter((c) => templateToRe(val).test(c));
+    hint.className = hits.length ? 'hint' : 'hint warn';
+    hint.textContent = hits.length
+      ? `${hits.length} file${hits.length > 1 ? 's' : ''} here match: ${hits.slice(0, 4).join(', ')}${hits.length > 4 ? '…' : ''}. ` + bareImage
+      : 'No file in this folder matches that pattern — check the spelling before running.';
+    return;
+  }
+  if (!candidates.includes(val)) {
+    hint.className = 'hint warn';
+    hint.textContent = `There is no "${val}" in this folder.`;
+    return;
+  }
+  hint.className = bareImage ? 'hint warn' : 'hint';
+  hint.textContent = (val === r.picked ? `Picked automatically: ${r.reason}. ` : 'Chosen manually. ') + bareImage;
 }
 
 async function refreshIPs() {
@@ -289,6 +330,7 @@ async function refreshIPs() {
 }
 
 $('serveDir').addEventListener('change', () => { refreshFirmware(); persist(); });
+$('fwFileSel').addEventListener('input', () => { renderFirmwareHint(); persist(); });
 
 /* ---- folder picker ---- */
 

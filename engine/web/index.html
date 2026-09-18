@@ -88,9 +88,11 @@
           </div>
         </label>
         <label><span>Image / control file</span>
-          <select id="fwFileSel"></select>
+          <input type="text" id="fwFileSel" list="fwFileList" spellcheck="false" autocomplete="off">
         </label>
+        <datalist id="fwFileList"></datalist>
         <div class="hint" id="fwFileHint"></div>
+        <div class="hint">Pick a file from the list, or type a name containing <b>%M</b> — it becomes each AP&#39;s model, so one run can push a different file per model.</div>
         <div class="row">
           <label><span>Serve port</span><input type="number" id="servePort" min="0"></label>
           <label><span>Wait for downloads (s)</span><input type="number" id="serveWaitS" min="0"></label>
@@ -125,7 +127,7 @@
           <label><span>Server user</span><input type="text" id="fwUser" autocomplete="off" spellcheck="false"></label>
           <label><span>Server password</span><input type="password" id="fwPass" autocomplete="off"></label>
         </div>
-        <div class="hint">Leave user and password blank for TFTP or an open HTTP server.</div>
+        <div class="hint">Leave user and password blank for TFTP or an open HTTP server. <b>%M</b> in the filename becomes each AP&#39;s model.</div>
       </div>
 
     </div>
