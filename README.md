@@ -58,7 +58,7 @@ None of that is proof of anything on its own. If you are not comfortable,
 build it yourself — it needs only Go, and takes seconds:
 
 ```
-cd engine && go build -o crossbreeder-plus.exe .
+go build -o crossbreeder-plus.exe .
 ```
 
 If you hit this detection, reporting it to Microsoft at
@@ -148,6 +148,15 @@ One line per change, newest first. `!)` marks something that changes behaviour
 you may be relying on; `*)` is everything else. The pull request has the detail
 and the reasoning.
 
+What's new in 1.0.6 (2026-09-19):
+
+```
+!) repo - the Go source moved to the repository root; the module is now github.com/andreacoppini/crossbreeder (#14);
+*) console - the image/control file can be typed as well as picked, so %M reaches the console (#13, #14);
+*) repo - the original Xojo version archived under legacy/ and no longer developed (#14);
+*) docs - a changelog in the README, and a release now fails if its tag has no entry (#14);
+```
+
 What's new in 1.0.5 (2026-08-28):
 
 ```
@@ -198,13 +207,15 @@ What's new in 1.0.0 (2026-08-25):
 
 | Path | |
 |---|---|
-| `engine/` | Crossbreeder Plus — the Go source, tests and browser console |
+| `*.go`, `ap/`, `web/` | Crossbreeder Plus — the Go source, tests and browser console |
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
+| `docs/INTERNALS.md` | how the engine works, building it, and every flag |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
 | `legacy/` | the original Crossbreeder, archived — source, last builds, and the abandoned attempt at making it concurrent |
 
-Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
+Building it yourself needs only Go — see [`docs/INTERNALS.md`](docs/INTERNALS.md)
+for how it works and what the flags do.
 
 ## The original Crossbreeder
 

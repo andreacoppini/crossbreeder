@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 	"golang.org/x/crypto/ssh"
 )
 

@@ -3,7 +3,7 @@
 The Xojo application that Crossbreeder Plus replaces. It is kept because it is
 the reference for what the tool is meant to do — several behaviours in the Go
 version were recovered from here rather than reinvented — but it is **no longer
-developed**. Fixes and releases go to [`../engine`](../engine).
+developed**. Fixes and releases go to the Go source at the root of this repository.
 
 The last builds of it are also at **https://dogtag.tacoppini.com**.
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 // Event is one thing that happened during a run. The CLI prints them and the

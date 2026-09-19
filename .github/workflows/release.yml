@@ -48,10 +48,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-          cache-dependency-path: engine/go.sum
+          cache-dependency-path: go.sum
 
       - name: Test
-        working-directory: engine
         run: go test ./...
 
       # The Windows resources are generated here rather than committed, for two
@@ -62,7 +61,6 @@ jobs:
       # place, which made every binary claim a modified tree and undermined the
       # provenance check the README tells people to run.
       - name: Generate the Windows version resource
-        working-directory: engine
         run: |
           set -euo pipefail
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
@@ -92,7 +90,6 @@ jobs:
           fi
 
       - name: Build
-        working-directory: engine
         env:
           CGO_ENABLED: "0"
         run: |
@@ -100,12 +97,12 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
           echo "Building ${VERSION}"
-          mkdir -p ../dist
+          mkdir -p dist
           LDFLAGS="-s -w -X main.version=${VERSION}"
 
           build() { # os arch ext
             GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "$LDFLAGS" \
-              -o "../dist/crossbreeder-plus-$1-$2$3" .
+              -o "dist/crossbreeder-plus-$1-$2$3" .
           }
           build windows amd64 .exe
           build windows arm64 .exe

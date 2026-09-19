@@ -148,15 +148,15 @@ the thing it is actually good at.
 
 ## 6. Proof of concept
 
-`engine/` in this repository is a working implementation of the SSH core,
+The Go source at the root of this repository is a working implementation of the SSH core,
 provided so the numbers above can be checked rather than believed. It keeps the
 behaviour that matters — ZoneFlex/Unleashed detection, the `super`/`sp-admin`
 fallback, `%M` model templating in the firmware filename, CSV in, CSV/JSON out —
 and folds the four copies of the command sequence into one `dialect` table
-(`engine/ap/session.go`), where the two AP families differ by a prompt string
+(`ap/session.go`), where the two AP families differ by a prompt string
 and a preamble.
 
-It ships with an in-process fake Ruckus AP (`engine/ap/fakeap_test.go`), which
+It ships with an in-process fake Ruckus AP (`ap/fakeap_test.go`), which
 is what makes the logic testable without a lab.
 
 It runs in two phases, because on a real site list the two costs are different
@@ -198,8 +198,8 @@ The sweep's own bound is measured too: 300 genuinely silent addresses (TEST-NET,
 RFC 5737) clear in ~3s against a serial cost of 7m30s. Full test run:
 
 ```
-$ cd engine && go test -race ./...
-ok  github.com/andreacoppini/crossbreeder/engine/ap  12.5s
+$ go test -race ./...
+ok  github.com/andreacoppini/crossbreeder/ap  12.5s
 ```
 
 One caveat that shaped the design: an AP can be up with ICMP blocked by an ACL,

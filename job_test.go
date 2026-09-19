@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 // The summary is the diagnostic that distinguishes "the AP rejected good
