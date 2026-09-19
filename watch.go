@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 // Watch states, shown in the console's detail column.

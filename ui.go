@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 //go:embed web

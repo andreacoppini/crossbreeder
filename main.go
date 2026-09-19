@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 // version is overwritten at release time with -X main.version. The fallback is

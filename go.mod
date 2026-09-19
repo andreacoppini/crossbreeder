@@ -1,4 +1,4 @@
-module github.com/andreacoppini/crossbreeder/engine
+module github.com/andreacoppini/crossbreeder
 
 go 1.25.0
 

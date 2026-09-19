@@ -2,7 +2,7 @@
 
 A rebuild of Crossbreeder's SSH core that works the access points in parallel,
 with a browser console and a scriptable command line over the same engine. See
-[`../docs/ARCHITECTURE-REVIEW.md`](../docs/ARCHITECTURE-REVIEW.md) for the
+[`ARCHITECTURE-REVIEW.md`](ARCHITECTURE-REVIEW.md) for the
 analysis this belongs to.
 
 It does the same job as `ChangeFW.Run` in the Xojo project — walk a CSV of

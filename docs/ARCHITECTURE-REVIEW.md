@@ -14,9 +14,9 @@ is Go rather than C for exactly those reasons.
 
 ## 1. What the tool does today
 
-`Crossbreeder.xojo_window` renders a form; the operator loads a CSV of AP
+`legacy/Crossbreeder.xojo_window` renders a form; the operator loads a CSV of AP
 addresses and presses **Go**. `btnMigrateGO.Action`
-(`Crossbreeder.xojo_window:1759`) is the entire execution engine:
+(`legacy/Crossbreeder.xojo_window:1759`) is the entire execution engine:
 
 ```
 for i = 0 to listmigrateAP.listcount-1        ' :1759
@@ -119,8 +119,8 @@ a rewrite:
   `ssh.UnlockComponent("RUCKUS.CB1122019_…")`). Chilkat is also a paid,
   closed-source, per-platform binary dependency: it is the single biggest reason
   the project is hard to build, hard to CI, and hard to hand to someone else.
-- **32 MB of build artefacts are committed** (`Crossbreeder-MacOS.zip`,
-  `Crossbreeder-Windows.zip`), which is most of the repository.
+- **32 MB of build artefacts are committed** (`legacy/Crossbreeder-MacOS.zip`,
+  `legacy/Crossbreeder-Windows.zip`), which is most of the repository.
 - **No tests, and no way to write one.** Nothing can be exercised without a real
   AP on the other end, because the logic and the UI are the same object.
 
@@ -148,15 +148,15 @@ the thing it is actually good at.
 
 ## 6. Proof of concept
 
-`engine/` in this repository is a working implementation of the SSH core,
+The Go source at the root of this repository is a working implementation of the SSH core,
 provided so the numbers above can be checked rather than believed. It keeps the
 behaviour that matters — ZoneFlex/Unleashed detection, the `super`/`sp-admin`
 fallback, `%M` model templating in the firmware filename, CSV in, CSV/JSON out —
 and folds the four copies of the command sequence into one `dialect` table
-(`engine/ap/session.go`), where the two AP families differ by a prompt string
+(`ap/session.go`), where the two AP families differ by a prompt string
 and a preamble.
 
-It ships with an in-process fake Ruckus AP (`engine/ap/fakeap_test.go`), which
+It ships with an in-process fake Ruckus AP (`ap/fakeap_test.go`), which
 is what makes the logic testable without a lab.
 
 It runs in two phases, because on a real site list the two costs are different
@@ -198,8 +198,8 @@ The sweep's own bound is measured too: 300 genuinely silent addresses (TEST-NET,
 RFC 5737) clear in ~3s against a serial cost of 7m30s. Full test run:
 
 ```
-$ cd engine && go test -race ./...
-ok  github.com/andreacoppini/crossbreeder/engine/ap  12.5s
+$ go test -race ./...
+ok  github.com/andreacoppini/crossbreeder/ap  12.5s
 ```
 
 One caveat that shaped the design: an AP can be up with ICMP blocked by an ACL,

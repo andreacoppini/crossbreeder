@@ -58,7 +58,7 @@ None of that is proof of anything on its own. If you are not comfortable,
 build it yourself — it needs only Go, and takes seconds:
 
 ```
-cd engine && go build -o crossbreeder-plus.exe .
+go build -o crossbreeder-plus.exe .
 ```
 
 If you hit this detection, reporting it to Microsoft at
@@ -132,7 +132,9 @@ as needing one and skipped, rather than being guessed at.
   the image away.
 - **Hosts the firmware itself.** A push needs nothing installed beyond this
   binary: it serves the images, works out which of your addresses the APs can
-  actually reach, and shows what each one is downloading.
+  actually reach, and shows what each one is downloading. Put `%M` in the
+  filename — `%M_118.2.0.0.875.rcks` — and it becomes each AP's model, so one
+  run pushes the right file to a mixed estate.
 - **Follows the reboot.** After the first pass it keeps pinging and re-reading
   the version, so an AP that drops off reads as *rebooting* and one that returns
   on a new version is reported as *upgraded* — the push is confirmed rather than
@@ -140,26 +142,94 @@ as needing one and skipped, rather than being guessed at.
 - **Exports CSV and JSON**, with a row for every address including the silent
   ones.
 
+## Changelog
+
+One line per change, newest first. `!)` marks something that changes behaviour
+you may be relying on; `*)` is everything else. The pull request has the detail
+and the reasoning.
+
+What's new in 1.0.6 (2026-09-19):
+
+```
+!) repo - the Go source moved to the repository root; the module is now github.com/andreacoppini/crossbreeder (#14);
+*) console - the image/control file can be typed as well as picked, so %M reaches the console (#13, #14);
+*) repo - the original Xojo version archived under legacy/ and no longer developed (#14);
+*) docs - a changelog in the README, and a release now fails if its tag has no entry (#14);
+```
+
+What's new in 1.0.5 (2026-08-28):
+
+```
+*) update - check GitHub for a newer release on launch; cached for a day, silent on failure (#12);
+*) login - try the factory-default super/sp-admin login by default, as the original does (#12);
+*) console - pin the console's defaults to the command line's so the two cannot drift apart (#12);
+```
+
+What's new in 1.0.4 (2026-08-27):
+
+```
+!) firmware - a firmware change locks out reboot and factory reset, which discarded the push (#11);
+*) login - set a forced password change to "Crossbreeder" unless told otherwise, as the original does (#11);
+*) login - separate switch for changing the password, so turning it off keeps the password typed (#11);
+*) login - refuse a new password under 8 characters once, before the run, not against every AP (#11);
+```
+
+What's new in 1.0.3 (2026-08-27):
+
+```
+*) release - the Windows binaries report an unmodified source tree again; v1.0.2 said otherwise (#10);
+```
+
+What's new in 1.0.2 (2026-08-27):
+
+```
+*) login - match the prompt strings the original Crossbreeder uses, not a reconstruction of them (#8);
+*) login - decline the Unleashed setup wizard, which stalled a factory-default AP indefinitely (#8);
+*) windows - stamp the version resource from the tag; earlier releases declared themselves 1.0.0 (#8);
+*) windows - build the arm64 version resource as an arm64 object, which broke the release (#9);
+```
+
+What's new in 1.0.1 (2026-08-26):
+
+```
+!) login - a forced password change no longer kills the run and everything after it (#7, #5);
+*) login - set a password on an AP that demands a change at first login, and carry on (#7);
+*) packaging - publish zipped Windows builds for networks that refuse an .exe download (#6);
+```
+
+What's new in 1.0.0 (2026-08-25):
+
+```
+*) first release: parallel engine, ping sweep, browser console, built-in image server;
+```
+
 ## Repository layout
 
 | Path | |
 |---|---|
-| `engine/` | Crossbreeder Plus — the Go source, tests and browser console |
+| `*.go`, `ap/`, `web/` | Crossbreeder Plus — the Go source, tests and browser console |
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
+| `docs/INTERNALS.md` | how the engine works, building it, and every flag |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
-| `Crossbreeder.xojo_binary_project` | the original Crossbreeder's current source — the reference for its behaviour |
-| `*.xojo_*`, `Crossbreeder-*.zip` | an older export of it, and the last builds |
+| `legacy/` | the original Crossbreeder, archived — source, last builds, and the abandoned attempt at making it concurrent |
 
-Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
+Building it yourself needs only Go — see [`docs/INTERNALS.md`](docs/INTERNALS.md)
+for how it works and what the flags do.
 
 ## The original Crossbreeder
 
-The Xojo application this replaces is still in this repository, and the last
-builds of it are at **https://dogtag.tacoppini.com**. It remains the reference
-for what the tool is meant to do; Crossbreeder Plus keeps its behaviour,
-including the `super`/`sp-admin` fallback and `%M` model templating in firmware
-filenames.
+The Xojo application this replaces is **archived in [`legacy/`](legacy/)** and is
+no longer developed; the last builds of it are also at
+**https://dogtag.tacoppini.com**. It remains the reference for what the tool is
+meant to do — several behaviours here were recovered from its source rather than
+reinvented, including the `super`/`sp-admin` fallback, `%M` model templating, the
+forced-password-change handling and the Unleashed setup-wizard bypass.
+
+[`legacy/multithreading-attempt/`](legacy/multithreading-attempt/) holds an
+abandoned attempt to make that version work several APs at once. It is kept
+because its notes record what was tried; why it could not work, and what was done
+instead, is [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md).
 
 ## Known limits
 

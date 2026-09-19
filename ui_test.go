@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andreacoppini/crossbreeder/engine/ap"
+	"github.com/andreacoppini/crossbreeder/ap"
 )
 
 func TestParseHostsTextAcceptsWhatOperatorsPaste(t *testing.T) {
