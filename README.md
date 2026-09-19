@@ -202,18 +202,23 @@ What's new in 1.0.0 (2026-08-25):
 | `docs/ARCHITECTURE-REVIEW.md` | why this was rebuilt rather than optimised in place |
 | `docs/RELEASE-NOTES.md` | the text published with each release |
 | `.github/workflows/release.yml` | builds and publishes every platform on a tag |
-| `Crossbreeder.xojo_binary_project` | the original Crossbreeder's current source — the reference for its behaviour |
-| `*.xojo_*`, `Crossbreeder-*.zip` | an older export of it, and the last builds |
+| `legacy/` | the original Crossbreeder, archived — source, last builds, and the abandoned attempt at making it concurrent |
 
 Building it yourself needs only Go — see [`engine/README.md`](engine/README.md).
 
 ## The original Crossbreeder
 
-The Xojo application this replaces is still in this repository, and the last
-builds of it are at **https://dogtag.tacoppini.com**. It remains the reference
-for what the tool is meant to do; Crossbreeder Plus keeps its behaviour,
-including the `super`/`sp-admin` fallback and `%M` model templating in firmware
-filenames.
+The Xojo application this replaces is **archived in [`legacy/`](legacy/)** and is
+no longer developed; the last builds of it are also at
+**https://dogtag.tacoppini.com**. It remains the reference for what the tool is
+meant to do — several behaviours here were recovered from its source rather than
+reinvented, including the `super`/`sp-admin` fallback, `%M` model templating, the
+forced-password-change handling and the Unleashed setup-wizard bypass.
+
+[`legacy/multithreading-attempt/`](legacy/multithreading-attempt/) holds an
+abandoned attempt to make that version work several APs at once. It is kept
+because its notes record what was tried; why it could not work, and what was done
+instead, is [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md).
 
 ## Known limits
 

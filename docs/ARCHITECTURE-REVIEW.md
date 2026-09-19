@@ -14,9 +14,9 @@ is Go rather than C for exactly those reasons.
 
 ## 1. What the tool does today
 
-`Crossbreeder.xojo_window` renders a form; the operator loads a CSV of AP
+`legacy/Crossbreeder.xojo_window` renders a form; the operator loads a CSV of AP
 addresses and presses **Go**. `btnMigrateGO.Action`
-(`Crossbreeder.xojo_window:1759`) is the entire execution engine:
+(`legacy/Crossbreeder.xojo_window:1759`) is the entire execution engine:
 
 ```
 for i = 0 to listmigrateAP.listcount-1        ' :1759
@@ -119,8 +119,8 @@ a rewrite:
   `ssh.UnlockComponent("RUCKUS.CB1122019_…")`). Chilkat is also a paid,
   closed-source, per-platform binary dependency: it is the single biggest reason
   the project is hard to build, hard to CI, and hard to hand to someone else.
-- **32 MB of build artefacts are committed** (`Crossbreeder-MacOS.zip`,
-  `Crossbreeder-Windows.zip`), which is most of the repository.
+- **32 MB of build artefacts are committed** (`legacy/Crossbreeder-MacOS.zip`,
+  `legacy/Crossbreeder-Windows.zip`), which is most of the repository.
 - **No tests, and no way to write one.** Nothing can be exercised without a real
   AP on the other end, because the logic and the UI are the same object.
 
