@@ -64,7 +64,7 @@ type options struct {
 	serveWait time.Duration
 	factory   bool
 	reboot    bool
-	command   string
+	commands  commandList
 	sshPort   string
 	timeout   time.Duration
 	legacy    bool

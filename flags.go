@@ -2,8 +2,20 @@ package main
 
 import (
 	"flag"
+	"strings"
 	"time"
 )
+
+// commandList collects a flag given more than once, so several commands can be
+// run in one session without quoting a newline into a shell.
+type commandList []string
+
+func (c *commandList) String() string { return strings.Join(*c, "; ") }
+
+func (c *commandList) Set(v string) error {
+	*c = append(*c, v)
+	return nil
+}
 
 func parseFlags() options {
 	var o options
@@ -35,7 +47,7 @@ func parseFlags() options {
 	flag.DurationVar(&o.fwWait, "fw-wait", 0, "after starting the update, hold the session open this long to capture the AP's progress output")
 	flag.BoolVar(&o.factory, "factory", false, "reset the AP to factory defaults (implies -reboot; the reset is inert until then)")
 	flag.BoolVar(&o.reboot, "reboot", false, "reboot the AP when finished")
-	flag.StringVar(&o.command, "cmd", "", "run an arbitrary AP CLI command")
+	flag.Var(&o.commands, "cmd", "run an AP CLI command; repeat the flag, or separate commands with newlines, to run several in the one session")
 
 	flag.StringVar(&o.deadOut, "dead", "", "write the addresses that did not answer to this file, one per line (re-feedable as -csv)")
 	flag.BoolVar(&o.watchEnabled, "watch", false, "after the actions, keep re-scanning the APs until interrupted (the console does this by default)")
