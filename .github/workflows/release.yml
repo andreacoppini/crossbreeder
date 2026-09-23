@@ -22,7 +22,11 @@ jobs:
       # Checks out whatever ref triggered this: the tag on a tag push, or the
       # branch it was dispatched from. When dispatched, the release action
       # creates the tag at that commit.
+      # fetch-depth: 0 for the tags and history the release-notes guard below
+      # needs; a shallow checkout cannot see the previous tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # A changelog nobody is forced to write goes stale in two releases. The
       # entry has to exist before the tag can be cut, and this fails the release
@@ -44,6 +48,38 @@ jobs:
             exit 1
           fi
           echo "Changelog entry for ${VERSION} found."
+
+      # The README changelog guard above is not enough on its own: v1.0.7 was
+      # published with release notes describing v1.0.6, because docs/RELEASE-NOTES.md
+      # is the body of every release and nothing forced it to be updated. It is a
+      # cumulative document with no version markers in it, so there is nothing to
+      # grep for — what can be checked is that it has been touched since the last
+      # release, which is exactly what did not happen.
+      - name: Check the release notes have been updated since the last release
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # The tag immediately below this one in version order. Not simply "the
+          # newest tag that is not this one": the two agree while releases only
+          # go forwards, but the latter picks a *later* tag the moment an older
+          # patch release is cut, and compares against the wrong point silently.
+          # Sorting this tag in among the others and taking its predecessor is
+          # right either way, and does not care whether the tag exists yet.
+          PREV="$({ git tag --list 'v*' | grep -vFx "$TAG"; echo "$TAG"; } | sort -V | grep -B1 -Fx "$TAG" | head -1)"
+          if [ "$PREV" = "$TAG" ]; then PREV=""; fi
+          if [ -z "$PREV" ]; then
+            echo "No previous tag; nothing to compare against."
+            exit 0
+          fi
+          if [ -z "$(git log --oneline "${PREV}..HEAD" -- docs/RELEASE-NOTES.md)" ]; then
+            echo "::error::docs/RELEASE-NOTES.md has not changed since ${PREV}."
+            echo "It is the body of the published release, so shipping it unchanged"
+            echo "describes the previous version. Add what this release contains, or"
+            echo "note there that nothing user-facing changed."
+            exit 1
+          fi
+          echo "Release notes updated since ${PREV}:"
+          git log --oneline "${PREV}..HEAD" -- docs/RELEASE-NOTES.md
 
       - uses: actions/setup-go@v5
         with:

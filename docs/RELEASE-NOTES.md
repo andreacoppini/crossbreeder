@@ -50,6 +50,15 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **A run can send a sequence of CLI commands, not just one**
+  ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). The console's
+  command field takes one command per line, and they run in order down the single
+  session already open on each AP; `-cmd` is repeatable on the command line. A
+  command that gives no prompt back — an unlock step, typically — no longer costs
+  the commands after it, which is what makes a sequence like unlocking and then
+  setting a country code work at all. Those lines are counted rather than
+  swallowed: the AP reads `1 of 4 commands gave no prompt back`.
+
 - **`%M` can be used from the console again**
   ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). The engine
   has always expanded `%M` to the AP's model, but in **Internal** server mode
