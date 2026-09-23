@@ -91,9 +91,15 @@ type Result struct {
 	MAC       string  `json:"mac,omitempty"`
 	Model     string  `json:"model,omitempty"`
 	Firmware  string  `json:"firmware,omitempty"`
-	Kind      Kind    `json:"kind,omitempty"`
-	Status    string  `json:"status"`
-	FwStatus  string  `json:"fw_status,omitempty"`
+	// Country is the configured country code, e.g. "ES". CountryFixed is whether
+	// the AP reports the code as locked by the board — "Fixed Ctry Code: yes" in
+	// boarddata. It is a pointer so that "not locked" and "the AP did not say"
+	// stay distinct: a nil here is silence, not a false.
+	Country      string `json:"country,omitempty"`
+	CountryFixed *bool  `json:"country_fixed,omitempty"`
+	Kind         Kind   `json:"kind,omitempty"`
+	Status       string `json:"status"`
+	FwStatus     string `json:"fw_status,omitempty"`
 	// Note is what the watch phase has to say about this AP after the actions
 	// were issued: rebooting, back up, upgraded.
 	Note       string        `json:"note,omitempty"`
@@ -128,11 +134,19 @@ type step struct {
 var zoneFlex = dialect{
 	kind:   KindZoneFlex,
 	prompt: "rkscli: ",
-	info:   []string{"get version", "get boarddata"},
+	// get countrycode is the spelling the CLI actually accepts — "get
+	// country-code", the obvious guess, is rejected outright. It returns
+	// "Country is ES"; the fixed/locked flag is a line in boarddata.
+	info: []string{"get version", "get boarddata", "get countrycode"},
 	parse: func(t string, r *Result) {
 		r.Model = between(t, "Ruckus ", " Multimedia Hotzone Wireless AP")
 		r.Firmware = afterMarker(t, "Version: ")
 		r.MAC = normalizeMAC(afterMarker(t, ", base "))
+		r.Country = afterMarker(t, "Country is ")
+		if v := afterMarker(t, "Fixed Ctry Code:"); v != "" {
+			fixed := equalFold(v, "yes")
+			r.CountryFixed = &fixed
+		}
 	},
 }
 

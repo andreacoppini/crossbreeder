@@ -431,6 +431,17 @@ function statusClass(s) {
   return 'st-skip';
 }
 
+// The country cell shows the code, and a small locked badge when the board
+// reports the code as fixed. An AP that did not report the flag (older
+// firmware, or a dialect that has no such command) shows the code alone.
+function countryCell(r) {
+  if (!r.country) return '';
+  if (r.countryFixed === true) {
+    return `${esc(r.country)} <span class="lock" title="country code locked by the board">locked</span>`;
+  }
+  return esc(r.country);
+}
+
 const removed = new Set();
 // Addresses currently being re-read. The row dims until its new value lands, so
 // a long pass over hundreds of APs looks like work rather than a frozen table.
@@ -476,7 +487,7 @@ function visible() {
     ? /Fail|Error/i.test(r.status) : r.status === statusFilter));
   if (filterText) {
     const q = filterText.toLowerCase();
-    list = list.filter((r) => [r.ip, r.mac, r.model, r.firmware, r.status, r.error, r.fw, r.note]
+    list = list.filter((r) => [r.ip, r.mac, r.model, r.firmware, r.country, r.status, r.error, r.fw, r.note]
       .some((v) => (v || '').toLowerCase().includes(q)));
   }
   if (sortKey) {
@@ -587,6 +598,7 @@ function render() {
     tr.onclick = (ev) => rowClick(ev, r.ip, ips);
     tr.innerHTML =
       `<td>${esc(r.ip)}</td><td>${esc(r.mac)}</td><td>${esc(r.model)}</td><td>${esc(r.firmware)}</td>` +
+      `<td>${countryCell(r)}</td>` +
       `<td class="num">${r.reachable ? esc(r.ping) : '—'}</td>` +
       `<td><span class="st ${statusClass(r.status)}">${esc(r.status)}</span></td>` +
       `<td>${esc(r.fw)}</td><td class="${r.error ? 'err' : 'note'}">${esc(r.error || r.note)}</td>`;
@@ -829,6 +841,7 @@ src.onmessage = (m) => {
       const r = e.result;
       upsert({
         ip: r.ip, mac: r.mac || '', model: r.model || '', firmware: r.firmware || '',
+        country: r.country || '', countryFixed: (r.country_fixed === true || r.country_fixed === false) ? r.country_fixed : null,
         ping: r.reachable ? (r.ping_ms || 0).toFixed(1) : '', reachable: r.reachable,
         status: r.status, fw: r.fw_status || '', error: r.error || '', note: r.note || '',
       });

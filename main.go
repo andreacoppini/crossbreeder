@@ -315,7 +315,7 @@ func writeResults(path string, results []ap.Result) error {
 
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Ping (ms)", "Result", "Firmware Push", "Watch", "Error"}); err != nil {
+	if err := w.Write([]string{"IP Address", "MAC Address", "Model", "Fw Version", "Country", "Country Fixed", "Ping (ms)", "Result", "Firmware Push", "Watch", "Error"}); err != nil {
 		return err
 	}
 	for _, r := range results {
@@ -323,9 +323,21 @@ func writeResults(path string, results []ap.Result) error {
 		if r.Reachable {
 			ping = fmt.Sprintf("%.1f", r.PingMS)
 		}
-		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, ping, r.Status, r.FwStatus, r.Note, r.Error}); err != nil {
+		if err := w.Write([]string{r.IP, r.MAC, r.Model, r.Firmware, r.Country, yesNo(r.CountryFixed), ping, r.Status, r.FwStatus, r.Note, r.Error}); err != nil {
 			return err
 		}
 	}
 	return w.Error()
+}
+
+// yesNo renders the tri-state lock flag for CSV: blank when the AP said
+// nothing, so an empty cell is not read as "not locked".
+func yesNo(b *bool) string {
+	if b == nil {
+		return ""
+	}
+	if *b {
+		return "yes"
+	}
+	return "no"
 }

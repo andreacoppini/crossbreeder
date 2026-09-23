@@ -185,6 +185,7 @@ td.err { color: var(--err); white-space: normal; font-family: system-ui, sans-se
 .st-run { background: #10283f; color: var(--accent); }
 .st-fail { background: #331717; color: var(--err); }
 .st-skip { background: #23282f; color: var(--muted); }
+.lock { margin-left: 5px; padding: 0 5px; border-radius: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; background: #3a2a12; color: var(--warn); }
 
 /* ---- drawer ---- */
 .drawer { flex: none; height: 210px; border-top: 1px solid var(--line); display: flex; flex-direction: column; background: var(--panel); }
