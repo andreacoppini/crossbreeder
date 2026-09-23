@@ -187,7 +187,11 @@ func (f *fakeAP) zoneFlexLoop(in *bufio.Reader, say func(string)) {
 		case "get version":
 			say("Ruckus R720 Multimedia Hotzone Wireless AP\r\nVersion: 110.0.0.0.1347\r\nOK\r\n")
 		case "get boarddata":
-			say("Board Data:\r\nCustomer ID: 0, base 8C:0C:90:12:34:56\r\nOK\r\n")
+			// Shaped after a real H510: the MAC arrives on the pool line, and
+			// the lock flag is the abbreviated "Fixed Ctry Code:".
+			say("name:     R720\r\nCustomer ID: 0\r\nV54 MAC Address Pool:  yes, size 16, base 8C:0C:90:12:34:56\r\nFixed Ctry Code:  no\r\nOK\r\n")
+		case "get countrycode":
+			say("Country is ES\r\nOK\r\n")
 		case "fw update":
 			say("fw: Updating rcks_wlan.main ...\r\n**fw(4327) : In progress\r\n")
 		case "reboot":
@@ -223,6 +227,10 @@ func (f *fakeAP) unleashedLoop(in *bufio.Reader, say func(string)) {
 			prompt = "\r\nruckus# "
 		case "show sysinfo":
 			say("Model= R610\r\nVersion= 200.7.10.202 Build 79\r\nMAC Address= 2c:c5:d3:aa:bb:cc\r\n")
+		case "get boarddata":
+			say("Fixed Ctry Code:  no\r\nOK\r\n")
+		case "get countrycode":
+			say("Country is DE\r\nOK\r\n")
 		case "ap-mode":
 			prompt = "\r\nruckus(ap-mode)# "
 		case "reboot":
@@ -263,6 +271,12 @@ func TestZoneFlexInventoryAndFirmware(t *testing.T) {
 	if r.Model != "R720" || r.Firmware != "110.0.0.0.1347" || r.MAC != "8C:0C:90:12:34:56" {
 		t.Errorf("inventory = %q/%q/%q", r.Model, r.Firmware, r.MAC)
 	}
+	if r.Country != "ES" {
+		t.Errorf("country = %q, want ES", r.Country)
+	}
+	if r.CountryFixed == nil || *r.CountryFixed {
+		t.Errorf("country fixed = %v, want a reported false", r.CountryFixed)
+	}
 
 	got := strings.Join(f.seen(), "\n")
 	// %M must have been expanded from the model we just discovered.
@@ -294,6 +308,14 @@ func TestUnleashedInventory(t *testing.T) {
 	}
 	if r.Model != "R610" || r.Firmware != "200.7.10.202.79" || r.MAC != "2C:C5:D3:AA:BB:CC" {
 		t.Errorf("inventory = %q/%q/%q", r.Model, r.Firmware, r.MAC)
+	}
+	// The country commands are assumed to be shared with ZoneFlex; the parse has
+	// to read them off the Unleashed transcript just the same.
+	if r.Country != "DE" {
+		t.Errorf("country = %q, want DE", r.Country)
+	}
+	if r.CountryFixed == nil || *r.CountryFixed {
+		t.Errorf("country fixed = %v, want a reported false", r.CountryFixed)
 	}
 	if got := strings.Join(f.seen(), "\n"); !strings.Contains(got, "fw set control R610.img") {
 		t.Errorf("firmware filename not templated:\n%s", got)
