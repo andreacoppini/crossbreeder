@@ -434,7 +434,7 @@ func (o options) merge(r runRequest) options {
 	out.fw = r.Firmware
 	out.factory = r.Factory
 	out.reboot = r.Reboot
-	out.command = r.Command
+	out.commands = commandList{r.Command}
 	out.fwProto, out.fwHost, out.fwPort = r.FwProto, r.FwHost, r.FwPort
 	out.fwUser, out.fwPass, out.fwFile = r.FwUser, r.FwPass, r.FwFile
 	out.serveIP = r.ServeIP

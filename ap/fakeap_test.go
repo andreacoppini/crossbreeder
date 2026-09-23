@@ -27,6 +27,10 @@ type fakeAP struct {
 	skipLogin bool
 	// rejectAll models a genuinely wrong password.
 	rejectAll bool
+	// swallow names a command the AP accepts and then says nothing at all to,
+	// so the caller's wait for the prompt times out. Real commands do this:
+	// anything that asks a question, or that busies the CLI for a while.
+	swallow string
 
 	mu       sync.Mutex
 	commands []string
@@ -176,6 +180,9 @@ func (f *fakeAP) zoneFlexLoop(in *bufio.Reader, say func(string)) {
 		}
 		cmd := strings.TrimRight(line, "\r\n")
 		f.record(cmd)
+		if f.swallow != "" && cmd == f.swallow {
+			continue // received, but no prompt handed back
+		}
 		switch cmd {
 		case "get version":
 			say("Ruckus R720 Multimedia Hotzone Wireless AP\r\nVersion: 110.0.0.0.1347\r\nOK\r\n")
@@ -208,6 +215,9 @@ func (f *fakeAP) unleashedLoop(in *bufio.Reader, say func(string)) {
 		}
 		cmd := strings.TrimRight(line, "\r\n")
 		f.record(cmd)
+		if f.swallow != "" && cmd == f.swallow {
+			continue // received, but no prompt handed back
+		}
 		switch cmd {
 		case "enable force":
 			prompt = "\r\nruckus# "
@@ -240,7 +250,7 @@ func TestZoneFlexInventoryAndFirmware(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.Port = port
-	cfg.Actions = Actions{UpdateFirmware: true, CustomCommand: "set scg ip 10.0.0.5"}
+	cfg.Actions = Actions{UpdateFirmware: true, Commands: []string{"set scg ip 10.0.0.5"}}
 	cfg.Firmware = Firmware{Proto: "http", Host: "10.0.0.9", Port: "8080", Filename: "%M_110.bl7"}
 
 	r := Run(t.Context(), host, cfg)

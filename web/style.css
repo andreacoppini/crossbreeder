@@ -272,3 +272,7 @@ aside.locked .body { opacity: .5; }
   opacity: .9;
 }
 .update:hover { opacity: 1; }
+
+/* The command box is a textarea because a sequence is the normal case, not the
+   exception — unlocking a country code takes several lines. */
+textarea#command { min-height: 68px; resize: vertical; font-family: var(--mono, ui-monospace, monospace); font-size: 13px; }

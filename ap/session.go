@@ -28,13 +28,16 @@ const (
 type Actions struct {
 	UpdateFirmware bool
 	FactoryReset   bool
-	CustomCommand  string
-	Reboot         bool
+	// Commands run in order, in the one session, each waiting for the prompt
+	// before the next is sent. Some AP tasks — unlocking a locked country code
+	// is the one this exists for — are a sequence rather than a single command.
+	Commands []string
+	Reboot   bool
 }
 
 // Any reports whether anything beyond inventory collection was requested.
 func (a Actions) Any() bool {
-	return a.UpdateFirmware || a.FactoryReset || a.CustomCommand != "" || a.Reboot
+	return a.UpdateFirmware || a.FactoryReset || len(a.Commands) > 0 || a.Reboot
 }
 
 // Firmware describes where the AP should pull its image from.
@@ -289,9 +292,29 @@ func run(ctx context.Context, host string, cfg Config, r *Result) error {
 			}
 		}
 	}
-	if cfg.Actions.CustomCommand != "" {
-		if err := exchange(e, cfg.Actions.CustomCommand, d.prompt); err != nil {
+	// The original sent each line and waited for the prompt, and — this is the
+	// part that matters — ignored whether the wait succeeded before moving to
+	// the next line. That is what makes a sequence like the country-code unlock
+	// work: one command that does not hand the prompt back must not cost the
+	// operator every line after it. A transport error is different, because
+	// nothing after it can be delivered at all.
+	var stalled []string
+	for _, cmd := range cfg.Actions.Commands {
+		_, err := exchangeOut(e, cmd, d.prompt)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrExpectTimeout):
+			stalled = append(stalled, cmd)
+		default:
 			return err
+		}
+	}
+	if len(stalled) > 0 {
+		note := fmt.Sprintf("%d of %d commands gave no prompt back", len(stalled), len(cfg.Actions.Commands))
+		if r.Note == "" {
+			r.Note = note
+		} else {
+			r.Note += "; " + note
 		}
 	}
 	// Factory reset and reboot are terminal: they drop the session, so they run

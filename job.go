@@ -68,6 +68,27 @@ type JobResult struct {
 
 // buildConfig turns the flag/form options into an engine config, and returns
 // any notes the operator should see about choices made on their behalf.
+// splitCommands turns what the operator typed into the lines to send. The
+// console gives a textarea and the command line allows -cmd more than once, so
+// both arrive here as text that may hold several lines.
+//
+// The original split on line endings and sent every piece, including the empty
+// ones. Blank lines are dropped here instead: a textarea almost always ends in
+// a newline, and sending a bare return to each of several hundred APs achieves
+// nothing except another prompt to wait for.
+func splitCommands(in []string) []string {
+	var out []string
+	for _, block := range in {
+		block = strings.ReplaceAll(strings.ReplaceAll(block, "\r\n", "\n"), "\r", "\n")
+		for _, line := range strings.Split(block, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				out = append(out, line)
+			}
+		}
+	}
+	return out
+}
+
 // minNewPasswordLen is the AP's own rule, taken from the original Crossbreeder:
 // "The new password must be 8 characters or longer".
 const minNewPasswordLen = 8
@@ -138,7 +159,7 @@ func buildConfig(opt options, password, newPassword string) (ap.Config, []string
 		Actions: ap.Actions{
 			UpdateFirmware: opt.fw,
 			FactoryReset:   opt.factory,
-			CustomCommand:  opt.command,
+			Commands:       splitCommands(opt.commands),
 			Reboot:         reboot,
 		},
 		Firmware: ap.Firmware{

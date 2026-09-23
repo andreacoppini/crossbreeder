@@ -125,12 +125,20 @@ $('file').onchange = (e) => {
 // reading .checked alone would confirm and submit an action that will not run.
 const acting = (id) => $(id).checked && !$(id).disabled;
 
+// What the engine will actually send: blank lines are dropped there too, so the
+// confirmation must not count them either.
+function commandLines() {
+  return $('command').value.split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+}
+
 function destructiveList() {
   const out = [];
   if (acting('firmware')) out.push('push new firmware');
   if (acting('factory')) out.push('factory reset (which forces a reboot)');
   if (acting('reboot') && !acting('factory')) out.push('reboot');
-  if ($('command').value.trim()) out.push(`run: ${$('command').value.trim()}`);
+  const cmds = commandLines();
+  if (cmds.length === 1) out.push(`run: ${cmds[0]}`);
+  else if (cmds.length > 1) out.push(`run ${cmds.length} commands, starting with: ${cmds[0]}`);
   return out;
 }
 

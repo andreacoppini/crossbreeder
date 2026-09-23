@@ -102,6 +102,37 @@ Turn it off with `-no-update-check`, or `CROSSBREEDER_NO_UPDATE_CHECK=1` in the
 environment to switch it off for everyone at a site. It is the only connection
 the tool makes that is not to an AP or to your own firmware server.
 
+### Running CLI commands
+
+**Run CLI commands** takes one command per line, and they run in order down a
+single session on each AP — the same session the inventory was read over, so the
+AP is logged into once:
+
+```
+set country-code-lock unlock
+set country-code GB
+```
+
+From the command line, repeat `-cmd` once per command — or give a single `-cmd`
+several lines, which is split the same way:
+
+```
+crossbreeder-plus -csv aps.csv -user admin -ask-pass \
+  -cmd "set country-code-lock unlock" -cmd "set country-code GB"
+```
+
+A command that returns no prompt does not cost the commands after it. Some AP
+commands answer nothing at all, or leave the CLI somewhere the prompt never
+comes back from — an unlock step is the usual one — and a sequence built around
+that has to keep going, exactly as the original Crossbreeder did. Those lines are
+still counted, and the AP's detail reads `2 of 5 commands gave no prompt back`,
+so a sequence that quietly did nothing is not mistaken for one that worked. Blank
+lines and surrounding spaces are dropped.
+
+What the AP said back is not parsed into a column — use these to *change* things,
+not to query them — but the whole session, commands and replies alike, is in the
+**Transcript** tab for the AP.
+
 Use `-ask-pass` rather than `-pass`: `cmd.exe` eats `^` as an escape character,
 every shell claims a different set, and an argument is visible in the process
 list. Run `crossbreeder-plus -h` for the rest.
@@ -126,8 +157,8 @@ as needing one and skipped, rather than being guessed at.
   Addresses that never answer are listed, folded into ranges, and can be written
   out to re-run later.
 - **Works the APs in parallel** — inventory, firmware, factory reset, reboot, or
-  any AP CLI command, across ZoneFlex and Unleashed, at whatever concurrency the
-  site can take. A firmware change cannot be combined with a reboot or a factory
+  any sequence of AP CLI commands, across ZoneFlex and Unleashed, at whatever
+  concurrency the site can take. A firmware change cannot be combined with a reboot or a factory
   reset: `fw update` only *starts* the download, so restarting the AP would throw
   the image away.
 - **Hosts the firmware itself.** A push needs nothing installed beyond this
@@ -147,6 +178,14 @@ as needing one and skipped, rather than being guessed at.
 One line per change, newest first. `!)` marks something that changes behaviour
 you may be relying on; `*)` is everything else. The pull request has the detail
 and the reasoning.
+
+What's new in 1.0.7 (2026-09-22):
+
+```
+*) cli - run several commands per AP, one per line, in order down the one session (#13, #16);
+*) cli - a command that gives no prompt back no longer costs the commands after it (#13, #16);
+*) cli - -cmd can be repeated, and the AP's detail counts any commands that stalled (#16);
+```
 
 What's new in 1.0.6 (2026-09-19):
 
