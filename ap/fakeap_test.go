@@ -227,6 +227,10 @@ func (f *fakeAP) unleashedLoop(in *bufio.Reader, say func(string)) {
 			prompt = "\r\nruckus# "
 		case "show sysinfo":
 			say("Model= R610\r\nVersion= 200.7.10.202 Build 79\r\nMAC Address= 2c:c5:d3:aa:bb:cc\r\n")
+		case "get boarddata":
+			say("Fixed Ctry Code:  no\r\nOK\r\n")
+		case "get countrycode":
+			say("Country is DE\r\nOK\r\n")
 		case "ap-mode":
 			prompt = "\r\nruckus(ap-mode)# "
 		case "reboot":
@@ -304,6 +308,14 @@ func TestUnleashedInventory(t *testing.T) {
 	}
 	if r.Model != "R610" || r.Firmware != "200.7.10.202.79" || r.MAC != "2C:C5:D3:AA:BB:CC" {
 		t.Errorf("inventory = %q/%q/%q", r.Model, r.Firmware, r.MAC)
+	}
+	// The country commands are assumed to be shared with ZoneFlex; the parse has
+	// to read them off the Unleashed transcript just the same.
+	if r.Country != "DE" {
+		t.Errorf("country = %q, want DE", r.Country)
+	}
+	if r.CountryFixed == nil || *r.CountryFixed {
+		t.Errorf("country fixed = %v, want a reported false", r.CountryFixed)
 	}
 	if got := strings.Join(f.seen(), "\n"); !strings.Contains(got, "fw set control R610.img") {
 		t.Errorf("firmware filename not templated:\n%s", got)

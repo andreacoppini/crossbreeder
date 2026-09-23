@@ -142,11 +142,7 @@ var zoneFlex = dialect{
 		r.Model = between(t, "Ruckus ", " Multimedia Hotzone Wireless AP")
 		r.Firmware = afterMarker(t, "Version: ")
 		r.MAC = normalizeMAC(afterMarker(t, ", base "))
-		r.Country = afterMarker(t, "Country is ")
-		if v := afterMarker(t, "Fixed Ctry Code:"); v != "" {
-			fixed := equalFold(v, "yes")
-			r.CountryFixed = &fixed
-		}
+		parseCountry(t, r)
 	},
 }
 
@@ -156,12 +152,29 @@ var unleashed = dialect{
 	enter: []step{
 		{send: "enable force", expect: "# "},
 	},
-	info: []string{"show sysinfo"},
+	// get boarddata / get countrycode are assumed to work here as they do on
+	// ZoneFlex — confirmed on an H510, taken on faith for Unleashed for want of
+	// one to check. An AP that does not know them answers "not recognized" and
+	// returns to the prompt, so Country simply stays blank; nothing breaks.
+	info: []string{"show sysinfo", "get boarddata", "get countrycode"},
 	parse: func(t string, r *Result) {
 		r.Model = afterMarker(t, "Model= ")
 		r.Firmware = strings.ReplaceAll(afterMarker(t, "Version= "), " Build ", ".")
 		r.MAC = normalizeMAC(afterMarker(t, "MAC Address= "))
+		parseCountry(t, r)
 	},
+}
+
+// parseCountry pulls the country code and its board-lock flag out of a session
+// transcript. The markers are the same on both dialects (see the info lists);
+// an AP that never emitted them leaves Country empty and CountryFixed nil, so a
+// blank stays distinct from a reported "not locked".
+func parseCountry(t string, r *Result) {
+	r.Country = afterMarker(t, "Country is ")
+	if v := afterMarker(t, "Fixed Ctry Code:"); v != "" {
+		fixed := equalFold(v, "yes")
+		r.CountryFixed = &fixed
+	}
 }
 
 // ErrPasswordChangeRequired means the AP refused to go any further until its

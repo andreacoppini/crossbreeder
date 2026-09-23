@@ -170,10 +170,10 @@ as needing one and skipped, rather than being guessed at.
   the version, so an AP that drops off reads as *rebooting* and one that returns
   on a new version is reported as *upgraded* — the push is confirmed rather than
   assumed.
-- **Reads the country code.** Each ZoneFlex AP's configured country code is
-  collected alongside the model and firmware, and the console flags one the
-  board reports as **locked** (`Fixed Ctry Code`) — the setting an unlock
-  sequence exists to clear. Both are in the CSV and JSON too.
+- **Reads the country code.** Each AP's configured country code is collected
+  alongside the model and firmware, and the console flags one the board reports
+  as **locked** (`Fixed Ctry Code`) — the setting an unlock sequence exists to
+  clear. Both are in the CSV and JSON too.
 - **Exports CSV and JSON**, with a row for every address including the silent
   ones.
 
@@ -186,7 +186,7 @@ and the reasoning.
 What's new in 1.0.8 (2026-09-23):
 
 ```
-*) inventory - read the country code of ZoneFlex APs, and flag a board-locked one (#13, #18);
+*) inventory - read the AP country code, and flag a board-locked one (#13, #18);
 ```
 
 What's new in 1.0.7 (2026-09-22):

@@ -51,14 +51,15 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 ## Changed
 
 - **The country code is part of the inventory now**
-  ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). A ZoneFlex
-  AP's configured country code is read alongside its model and firmware, and the
+  ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). Each AP's
+  configured country code is read alongside its model and firmware, and the
   console shows a **locked** badge on one whose board reports the code as fixed —
   the state an unlock sequence exists to clear, so you can see which APs still
   need it and confirm afterwards that they don't. Both values are in the CSV and
   JSON exports. This reads `get countrycode` and the `Fixed Ctry Code` line of
-  `get boarddata`, the strings a real H510 actually emits; Unleashed APs are not
-  covered yet, for want of a device to read the equivalent output from.
+  `get boarddata` — the strings a real ZoneFlex H510 emits, and assumed to be
+  the same on Unleashed. An AP that does not recognise the commands simply shows
+  no country, so the worst case there is a blank column, not a failed run.
 
 - **A run can send a sequence of CLI commands, not just one**
   ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). The console's
