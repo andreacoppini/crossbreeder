@@ -33,8 +33,9 @@
     <h2>Targets <span id="nHosts"></span></h2>
     <div class="body">
       <textarea id="hosts" placeholder="Paste IP addresses, or a whole CSV — the first column of each row is used.&#10;&#10;192.168.77.115&#10;172.20.44.10"></textarea>
-      <div class="row">
+      <div class="targetBtns">
         <button id="pick">Load file…</button>
+        <button id="r1Pull">From RUCKUS One</button>
         <button id="clear">Clear</button>
       </div>
       <input type="file" id="file" accept=".csv,.txt" hidden>
@@ -58,23 +59,24 @@
   <section class="collapsed" id="r1Section">
     <h2>RUCKUS One</h2>
     <div class="body">
-      <label class="check"><input type="checkbox" id="r1"> Pull AP passwords from RUCKUS One</label>
-      <div class="hint">R1 sets a different CLI password on each AP and rotates it daily. With this on, Crossbreeder looks up each address in your tenant and tries its current password before the ones above.</div>
-      <div id="r1Fields" hidden>
-        <label><span>Region</span>
-          <select id="r1Region">
-            <option value="us">US / North America</option>
-            <option value="eu">Europe</option>
-            <option value="asia">Asia</option>
-          </select>
-        </label>
-        <label><span>Tenant ID</span><input type="text" id="r1Tenant" autocomplete="off" spellcheck="false"></label>
-        <label><span>Client ID</span><input type="text" id="r1ClientId" autocomplete="off" spellcheck="false"></label>
-        <label><span>Shared secret</span><input type="password" id="r1Secret" autocomplete="off"></label>
+      <div class="hint">Connect to your RUCKUS One tenant to pull the AP address list into Targets, and to try each AP's daily-rotating CLI password during a run.</div>
+      <label><span>Region</span>
+        <select id="r1Region">
+          <option value="us">US / North America</option>
+          <option value="eu">Europe</option>
+          <option value="asia">Asia</option>
+        </select>
+      </label>
+      <label><span>Tenant ID</span><input type="text" id="r1Tenant" autocomplete="off" spellcheck="false"></label>
+      <label><span>Client ID</span><input type="text" id="r1ClientId" autocomplete="off" spellcheck="false"></label>
+      <label><span>Shared secret</span><input type="password" id="r1Secret" autocomplete="off"></label>
+      <div class="hint">Create the client ID and secret in RUCKUS One under Administration → Account Management → Settings → Application Token. The tenant ID is on the same page.</div>
+      <label class="check"><input type="checkbox" id="r1"> Try each AP's CLI password during a run</label>
+      <div class="hint">R1 sets a different CLI password on each AP and rotates it daily. With this on, Crossbreeder tries each address's current password before the ones in Credentials.</div>
+      <div id="r1PassFields" hidden>
         <label><span>AP username for the pulled password</span><input type="text" id="r1User" value="admin" autocomplete="off" spellcheck="false"></label>
-        <div class="hint">Create the client ID and secret in RUCKUS One under Administration → Account Management → Settings → Application Token. The tenant ID is on the same page.</div>
-        <div class="hint warn" id="r1Hint" hidden></div>
       </div>
+      <div class="hint warn" id="r1Hint" hidden></div>
     </div>
   </section>
 
@@ -254,6 +256,20 @@
     <div class="btns">
       <button id="pkCancel">Cancel</button>
       <button id="pkUse" class="primary">Use this folder</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="r1Picker" hidden>
+  <div style="width:520px;max-width:90vw">
+    <h3>Pull addresses from RUCKUS One</h3>
+    <div class="hint" id="r1PickHint"></div>
+    <label class="check" style="margin:6px 0"><input type="checkbox" id="r1All"> <b>All venues</b></label>
+    <div id="r1VenueList" class="pklist"></div>
+    <div class="hint warn" id="r1Conflict" hidden></div>
+    <div class="btns">
+      <button id="r1PickCancel">Cancel</button>
+      <button id="r1PickAdd" class="primary">Add to Targets</button>
     </div>
   </div>
 </div>

@@ -69,6 +69,14 @@ type r1AP struct {
 	VenueID string
 	IP      string
 	Model   string
+	Name    string
+}
+
+// r1Venue is a venue (a "space" in newer R1 wording): the grouping APs belong
+// to, and the unit the operator selects when pulling an address list.
+type r1Venue struct {
+	ID   string
+	Name string
 }
 
 // newR1Client exchanges the client credentials for a bearer token. A failure
@@ -157,7 +165,7 @@ func (c *r1Client) listAPs(ctx context.Context) ([]r1AP, error) {
 	var out []r1AP
 	for page := 1; ; page++ {
 		reqBody, _ := json.Marshal(map[string]any{
-			"fields":   []string{"serialNumber", "venueId", "networkStatus", "model"},
+			"fields":   []string{"serialNumber", "venueId", "networkStatus", "model", "name"},
 			"page":     page,
 			"pageSize": pageSize,
 		})
@@ -174,6 +182,7 @@ func (c *r1Client) listAPs(ctx context.Context) ([]r1AP, error) {
 				SerialNumber  string `json:"serialNumber"`
 				VenueID       string `json:"venueId"`
 				Model         string `json:"model"`
+				Name          string `json:"name"`
 				NetworkStatus struct {
 					IPAddress string `json:"ipAddress"`
 				} `json:"networkStatus"`
@@ -188,6 +197,7 @@ func (c *r1Client) listAPs(ctx context.Context) ([]r1AP, error) {
 				VenueID: d.VenueID,
 				IP:      d.NetworkStatus.IPAddress,
 				Model:   d.Model,
+				Name:    d.Name,
 			})
 		}
 		// Drive paging off the reported total rather than page fullness: a
@@ -196,6 +206,37 @@ func (c *r1Client) listAPs(ctx context.Context) ([]r1AP, error) {
 		if len(pageResp.Data) == 0 || len(out) >= pageResp.TotalCount {
 			break
 		}
+	}
+	return out, nil
+}
+
+// listVenues returns the tenant's venues (spaces). There are rarely many, so
+// this does not page — a thousand is far above any real tenant.
+func (c *r1Client) listVenues(ctx context.Context) ([]r1Venue, error) {
+	reqBody, _ := json.Marshal(map[string]any{
+		"fields":   []string{"id", "name"},
+		"page":     1,
+		"pageSize": 1000,
+	})
+	body, code, err := c.do(ctx, http.MethodPost, "/venues/query", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("RUCKUS One venue query: %w", err)
+	}
+	if code != http.StatusOK {
+		return nil, fmt.Errorf("RUCKUS One venue query failed (HTTP %d): %s", code, r1Reason(body))
+	}
+	var resp struct {
+		Data []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("RUCKUS One venue query: unreadable response: %w", err)
+	}
+	out := make([]r1Venue, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		out = append(out, r1Venue{ID: d.ID, Name: d.Name})
 	}
 	return out, nil
 }

@@ -19,6 +19,7 @@ type fakeR1 struct {
 	clientID  string
 	secret    string
 	aps       []r1AP
+	venues    []r1Venue
 	passwords map[string]string // serial -> password
 	denySN    map[string]bool   // serials this account may not read (403)
 	pwCalls   atomic.Int64
@@ -52,6 +53,18 @@ func newFakeR1(t *testing.T) *fakeR1 {
 		})
 	})
 
+	mux.HandleFunc("/venues/query", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer jwt-for-"+f.clientID {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var data []map[string]any
+		for _, v := range f.venues {
+			data = append(data, map[string]any{"id": v.ID, "name": v.Name})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"totalCount": len(f.venues), "data": data})
+	})
+
 	mux.HandleFunc("/venues/aps/query", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer jwt-for-"+f.clientID {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -80,6 +93,7 @@ func newFakeR1(t *testing.T) *fakeR1 {
 				"serialNumber":  a.Serial,
 				"venueId":       a.VenueID,
 				"model":         a.Model,
+				"name":          a.Name,
 				"networkStatus": map[string]any{"ipAddress": a.IP},
 			})
 		}
