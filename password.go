@@ -54,6 +54,30 @@ func resolveNewPassword(o options) (string, error) {
 	return o.newPass, nil
 }
 
+// resolveR1Secret decides where the RUCKUS One shared secret comes from, with
+// the same reasoning as resolvePassword: an explicit source wins, a terminal is
+// offered a prompt, and the command-line argument is the last resort because it
+// lands in the shell history and the process list.
+func resolveR1Secret(o options) (string, error) {
+	if !o.r1 {
+		return "", nil
+	}
+	if o.r1SecretEnv != "" {
+		v, ok := os.LookupEnv(o.r1SecretEnv)
+		if !ok {
+			return "", fmt.Errorf("-r1-secret-env %s: environment variable is not set", o.r1SecretEnv)
+		}
+		return v, nil
+	}
+	if o.askR1Secret {
+		return promptPassword("RUCKUS One shared secret: ")
+	}
+	if o.r1Secret == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+		return promptPassword("RUCKUS One shared secret: ")
+	}
+	return o.r1Secret, nil
+}
+
 func promptPassword(prompt string) (string, error) {
 	fmt.Fprint(os.Stderr, prompt)
 	fd := int(os.Stdin.Fd())

@@ -150,6 +150,44 @@ the original tool are sitting on `Crossbreeder` as their password, so it is
 often what belongs in the **AP password** field too. Leave it empty and those APs are reported
 as needing one and skipped, rather than being guessed at.
 
+### Pulling AP passwords from RUCKUS One
+
+APs adopted by RUCKUS One do not keep a password you can type: R1 sets a
+different CLI password on each AP and **rotates it daily**. Give Crossbreeder
+an API key and it looks each address up in your tenant and tries that AP's
+current password ahead of anything you typed — so a run across an R1-managed
+estate just works, without a password per AP by hand.
+
+Tick **RUCKUS One** in the console, or on the command line:
+
+```
+crossbreeder-plus -csv aps.csv -r1 -r1-region eu \
+  -r1-tenant <tenant-id> -r1-client-id <client-id> -r1-ask-secret
+```
+
+Create the client ID and shared secret in RUCKUS One under **Administration →
+Account Management → Settings → Application Token**; the tenant ID is on the
+same page. `-r1-region` is `us`, `eu` or `asia`. Prefer `-r1-ask-secret` (or
+`-r1-secret-env`) over `-r1-secret`, which lands in your shell history.
+
+How it behaves:
+
+- It pulls a password only for the addresses that **answer the reachability
+  sweep**, at run time, because the password rotates — a targeted run of a few
+  APs does not pull the whole tenant, and nothing is cached between runs.
+- The password is tried as user **`admin`** by default (`-r1-user` to change),
+  ahead of the manual credentials, which still apply as a fallback.
+- **Duplicate addresses are expected.** The same private IP can belong to two
+  different venues; Crossbreeder pulls the password for each and tries them all.
+- An address R1 does not know, or whose password your account may not read, is
+  simply skipped — the run carries on with whatever else you supplied.
+
+One caveat worth knowing before you rely on it: RUCKUS gates the password
+behind account role. A **VAR/partner** key reads it (confirmed); a plain
+end-customer key may be refused by RUCKUS with a 403, in which case the address
+is skipped and reported as pulling no password. That is an account-permission
+question for RUCKUS, not something the tool can work around.
+
 ## What it does
 
 - **Pings first.** Most addresses on a site list are dead, and each one costs a
@@ -182,6 +220,12 @@ as needing one and skipped, rather than being guessed at.
 One line per change, newest first. `!)` marks something that changes behaviour
 you may be relying on; `*)` is everything else. The pull request has the detail
 and the reasoning.
+
+What's new in 1.0.9 (2026-10-23):
+
+```
+!) r1 - pull each AP's daily-rotating CLI password from RUCKUS One and try it (#19);
+```
 
 What's new in 1.0.8 (2026-09-23):
 

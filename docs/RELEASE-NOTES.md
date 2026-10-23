@@ -50,6 +50,18 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **It can pull AP passwords from RUCKUS One**
+  ([#19](https://github.com/andreacoppini/crossbreeder/pull/19)). APs adopted by
+  RUCKUS One carry a per-AP CLI password that R1 rotates daily, so there is no
+  password to type. Give Crossbreeder an API key (`-r1`, or the **RUCKUS One**
+  section in the console) and it looks each reachable address up in your tenant
+  and tries that AP's current password ahead of the manual ones. It pulls only
+  for the addresses that answered, at run time, and never caches — because the
+  password changes every day. Duplicate private IPs across venues are handled by
+  trying every candidate. Reading the password is role-gated on RUCKUS's side: a
+  VAR/partner key works, a plain end-customer key may be refused, in which case
+  that address is skipped rather than failing the run.
+
 - **The country code is part of the inventory now**
   ([#13](https://github.com/andreacoppini/crossbreeder/issues/13)). Each AP's
   configured country code is read alongside its model and firmware, and the

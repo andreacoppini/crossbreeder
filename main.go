@@ -82,6 +82,17 @@ type options struct {
 	pingTimeout     time.Duration
 	pingRetries     int
 	pingConcurrency int
+
+	// RUCKUS One: pull each AP's rotating CLI password from the R1 API and try
+	// it alongside the manual credentials.
+	r1          bool
+	r1Region    string
+	r1Tenant    string
+	r1ClientID  string
+	r1Secret    string
+	r1SecretEnv string
+	askR1Secret bool
+	r1User      string
 }
 
 func main() {
@@ -142,6 +153,16 @@ func run(opt options) error {
 	newPassword, err := resolveNewPassword(opt)
 	if err != nil {
 		return err
+	}
+
+	// Resolve the R1 secret here, next to the other secrets, so an -r1-ask-secret
+	// prompt happens before the run rather than mid-flight.
+	if opt.r1 {
+		secret, err := resolveR1Secret(opt)
+		if err != nil {
+			return err
+		}
+		opt.r1Secret = secret
 	}
 
 	cfg, notes, err := buildConfig(opt, password, newPassword)

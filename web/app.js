@@ -47,7 +47,8 @@ async function checkForUpdate() {
 
 // Everything except the passwords is remembered between sessions.
 const SAVE = [...FIELDS, 'alsoDefault', 'changePass', 'firmware', 'factory', 'reboot', 'command',
-  'srvMode', 'serveIp', 'fwFile', 'fwFileSel', 'fwHost', 'fwUser', 'hosts', 'watch'];
+  'srvMode', 'serveIp', 'fwFile', 'fwFileSel', 'fwHost', 'fwUser', 'hosts', 'watch',
+  'r1', 'r1Region', 'r1Tenant', 'r1ClientId', 'r1User'];
 
 function persist() {
   const s = {};
@@ -84,6 +85,8 @@ function restore() {
   changePassChanged();
   credsChanged();
   restoreMode();
+  r1Changed();
+  if ($('r1').checked) $('r1Section').classList.remove('collapsed');
   pollServer();
 }
 
@@ -228,6 +231,27 @@ function credsChanged() {
 document.querySelectorAll('section > h2').forEach((h) => {
   h.onclick = () => h.parentElement.classList.toggle('collapsed');
 });
+
+/* ---------- RUCKUS One ---------- */
+
+// The secret is never persisted — same rule as the AP password — so it is not
+// in SAVE and lives only in this field for the session.
+function r1Changed() {
+  const on = $('r1').checked;
+  $('r1Fields').hidden = !on;
+  const hint = $('r1Hint');
+  if (!on) { hint.hidden = true; return; }
+  const missing = [];
+  if (!$('r1Tenant').value.trim()) missing.push('tenant ID');
+  if (!$('r1ClientId').value.trim()) missing.push('client ID');
+  if (!$('r1Secret').value) missing.push('shared secret');
+  hint.hidden = missing.length === 0;
+  hint.textContent = missing.length ? 'Still needs: ' + missing.join(', ') + '.' : '';
+}
+for (const id of ['r1', 'r1Tenant', 'r1ClientId', 'r1Secret', 'r1Region', 'r1User']) {
+  $(id).addEventListener('input', r1Changed);
+  $(id).addEventListener('change', r1Changed);
+}
 
 /* ---------- firmware server ---------- */
 
@@ -692,6 +716,8 @@ function request() {
     watch: $('watch').checked, watchIntervalS: num('watchIntervalS'),
     sshPort: $('sshPort').value, timeoutS: num('timeoutS'), legacy: $('legacy').checked,
     serveWaitS: num('serveWaitS'),
+    r1: $('r1').checked, r1Region: $('r1Region').value, r1Tenant: $('r1Tenant').value.trim(),
+    r1ClientId: $('r1ClientId').value.trim(), r1Secret: $('r1Secret').value, r1User: $('r1User').value.trim(),
   };
 }
 
@@ -706,6 +732,11 @@ $('run').onclick = () => {
   if (!u && pw) {
     $('user').focus();
     return toast('A password with no username cannot be used.');
+  }
+  if ($('r1').checked) {
+    if (!$('r1Tenant').value.trim()) { $('r1Tenant').focus(); return toast('RUCKUS One needs a tenant ID.'); }
+    if (!$('r1ClientId').value.trim()) { $('r1ClientId').focus(); return toast('RUCKUS One needs a client ID.'); }
+    if (!$('r1Secret').value) { $('r1Secret').focus(); return toast('RUCKUS One needs the shared secret — it is not kept after the browser closes.'); }
   }
   const d = destructiveList();
   if (!d.length) return start();

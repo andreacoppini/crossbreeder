@@ -58,6 +58,15 @@ func parseFlags() options {
 	flag.IntVar(&o.pingRetries, "ping-retries", 1, "extra attempts for addresses that stayed silent")
 	flag.IntVar(&o.pingConcurrency, "pc", 256, "how many addresses to probe at once")
 
+	flag.BoolVar(&o.r1, "r1", false, "pull each AP's CLI password from RUCKUS One and try it (needs -r1-tenant, -r1-client-id and a secret)")
+	flag.StringVar(&o.r1Region, "r1-region", "us", "RUCKUS One region: us, eu or asia")
+	flag.StringVar(&o.r1Tenant, "r1-tenant", "", "RUCKUS One tenant ID")
+	flag.StringVar(&o.r1ClientID, "r1-client-id", "", "RUCKUS One API client ID")
+	flag.StringVar(&o.r1Secret, "r1-secret", "", "RUCKUS One API shared secret (prefer -r1-ask-secret or -r1-secret-env)")
+	flag.StringVar(&o.r1SecretEnv, "r1-secret-env", "", "read the RUCKUS One secret from this environment variable")
+	flag.BoolVar(&o.askR1Secret, "r1-ask-secret", false, "prompt for the RUCKUS One secret instead of passing it on the command line")
+	flag.StringVar(&o.r1User, "r1-user", "admin", "username to pair with the RUCKUS One password")
+
 	flag.StringVar(&o.sshPort, "port", "22", "SSH port")
 	flag.DurationVar(&o.timeout, "timeout", 8*time.Second, "per-step timeout")
 	flag.BoolVar(&o.legacy, "legacy", true, "allow the SHA-1/CBC algorithms old ZoneFlex firmware needs")

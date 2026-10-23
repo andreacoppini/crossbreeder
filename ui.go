@@ -216,6 +216,13 @@ type runRequest struct {
 	TimeoutS   int    `json:"timeoutS"`
 	Legacy     bool   `json:"legacy"`
 	ServeWaitS int    `json:"serveWaitS"`
+
+	R1         bool   `json:"r1"`
+	R1Region   string `json:"r1Region"`
+	R1Tenant   string `json:"r1Tenant"`
+	R1ClientID string `json:"r1ClientId"`
+	R1Secret   string `json:"r1Secret"`
+	R1User     string `json:"r1User"`
 }
 
 func (u *uiServer) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -452,6 +459,16 @@ func (o options) merge(r runRequest) options {
 		out.sshPort = r.SSHPort
 	}
 	out.legacy = r.Legacy
+	out.r1 = r.R1
+	if r.R1 {
+		out.r1Region = r.R1Region
+		out.r1Tenant = r.R1Tenant
+		out.r1ClientID = r.R1ClientID
+		out.r1Secret = r.R1Secret
+		if r.R1User != "" {
+			out.r1User = r.R1User
+		}
+	}
 	setIfPositive(&out.concurrency, r.Concurrency)
 	setIfPositive(&out.pingRetries, r.PingRetries+1) // 0 is a legitimate choice
 	out.pingRetries = max(0, r.PingRetries)

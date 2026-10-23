@@ -188,6 +188,20 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 	// indistinguishable from the AP rejecting good credentials.
 	emit(Event{Kind: EvLog, Message: credentialSummary(cfg.Credentials)})
 
+	// RUCKUS One, if asked for: sign in and map the tenant's APs now, so a bad
+	// region/tenant/key fails before the sweep rather than against every login.
+	// Passwords themselves are pulled later, for the addresses that answer.
+	var r1res *r1Resolver
+	if opt.r1 {
+		var err error
+		r1res, err = newR1Resolver(ctx, opt)
+		if err != nil {
+			return JobResult{}, err
+		}
+		emit(Event{Kind: EvLog, Message: fmt.Sprintf("RUCKUS One: signed in to %s; %d AP(s) in the tenant",
+			r1res.client.host, r1res.tenantAPs())})
+	}
+
 	// The image server, if asked for. It starts before anything touches an AP,
 	// because "fw update" can have the AP fetching within milliseconds, and it
 	// outlives the SSH phase for the same reason.
@@ -230,6 +244,18 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 	emit(Event{Kind: EvSweep, Done: len(alive), Total: len(hosts), Dead: dead,
 		Message: noReplyStatus(opt.probe)})
 
+	// Pull the R1 passwords for the addresses that answered — not the whole
+	// tenant — so a targeted run of a handful of APs does not fetch hundreds of
+	// passwords. Each rotates daily, so this is deliberately at run time.
+	var r1creds map[string][]ap.Credentials
+	if r1res != nil {
+		var matched, pulled int
+		r1creds, matched, pulled = r1res.credentialsFor(ctx, alive)
+		emit(Event{Kind: EvLog, Message: fmt.Sprintf(
+			"RUCKUS One: matched %d of %d reachable address(es); pulled %d password(s)",
+			matched, len(alive), pulled)})
+	}
+
 	// Phase 2 — SSH, over the survivors only.
 	emit(Event{Kind: EvPhase, Phase: "ssh", Total: len(alive)})
 	byHost := make(map[string]ap.Result, len(alive))
@@ -237,8 +263,9 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 		var mu sync.Mutex
 		done := 0
 		rn := &Runner{
-			Concurrency: opt.concurrency,
-			Config:      cfg,
+			Concurrency:        opt.concurrency,
+			Config:             cfg,
+			PerHostCredentials: func(ip string) []ap.Credentials { return r1creds[ip] },
 			OnResult: func(_ int, r ap.Result) {
 				mu.Lock()
 				done++
