@@ -50,6 +50,17 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Changed
 
+- **It can pull the address list from RUCKUS One**
+  ([#20](https://github.com/andreacoppini/crossbreeder/pull/20)). No need to
+  paste addresses for an R1-managed estate: fill in the RUCKUS One details and
+  press **From RUCKUS One** above the Targets box. If the tenant has more than
+  one venue (space), a picker lets you choose one, several, or all; the chosen
+  venues' APs land in Targets, one per line, with the AP name as a second column
+  the run ignores. An address that appears in more than one selected venue —
+  private ranges repeat across sites — is flagged as you pick and added once,
+  and a run then tries every matching venue's password for it. Console-only, as
+  it needs the picker.
+
 - **It can pull AP passwords from RUCKUS One**
   ([#19](https://github.com/andreacoppini/crossbreeder/pull/19)). APs adopted by
   RUCKUS One carry a per-AP CLI password that R1 rotates daily, so there is no

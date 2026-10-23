@@ -236,15 +236,21 @@ document.querySelectorAll('section > h2').forEach((h) => {
 
 // The secret is never persisted — same rule as the AP password — so it is not
 // in SAVE and lives only in this field for the session.
+function r1Missing() {
+  const m = [];
+  if (!$('r1Tenant').value.trim()) m.push('tenant ID');
+  if (!$('r1ClientId').value.trim()) m.push('client ID');
+  if (!$('r1Secret').value) m.push('shared secret');
+  return m;
+}
+
+// The credentials are always shown; this checkbox only governs whether a run
+// pulls passwords. The hint flags missing fields once that is switched on.
 function r1Changed() {
-  const on = $('r1').checked;
-  $('r1Fields').hidden = !on;
+  $('r1PassFields').hidden = !$('r1').checked;
   const hint = $('r1Hint');
-  if (!on) { hint.hidden = true; return; }
-  const missing = [];
-  if (!$('r1Tenant').value.trim()) missing.push('tenant ID');
-  if (!$('r1ClientId').value.trim()) missing.push('client ID');
-  if (!$('r1Secret').value) missing.push('shared secret');
+  if (!$('r1').checked) { hint.hidden = true; hint.textContent = ''; return; }
+  const missing = r1Missing();
   hint.hidden = missing.length === 0;
   hint.textContent = missing.length ? 'Still needs: ' + missing.join(', ') + '.' : '';
 }
@@ -252,6 +258,135 @@ for (const id of ['r1', 'r1Tenant', 'r1ClientId', 'r1Secret', 'r1Region', 'r1Use
   $(id).addEventListener('input', r1Changed);
   $(id).addEventListener('change', r1Changed);
 }
+
+// ---- pulling the address list into Targets ----
+
+let r1Venues = [];
+
+async function pullFromR1() {
+  const miss = r1Missing();
+  if (miss.length) {
+    $('r1Section').classList.remove('collapsed');
+    (miss[0] === 'tenant ID' ? $('r1Tenant') : miss[0] === 'client ID' ? $('r1ClientId') : $('r1Secret')).focus();
+    return toast('Enter your RUCKUS One details first: ' + miss.join(', ') + '.');
+  }
+  const btn = $('r1Pull');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Querying…';
+  try {
+    const res = await fetch('/api/r1/inventory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        r1Region: $('r1Region').value, r1Tenant: $('r1Tenant').value.trim(),
+        r1ClientId: $('r1ClientId').value.trim(), r1Secret: $('r1Secret').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return toast('RUCKUS One: ' + (data.error || ('HTTP ' + res.status)));
+    const all = data.venues || [];
+    r1Venues = all.filter((v) => v.aps && v.aps.length);
+    if (!r1Venues.length) return toast('No APs with an address found in RUCKUS One.');
+    if (r1Venues.length === 1) { fillTargetsFromVenues(r1Venues); return; }
+    openR1Picker();
+  } catch (e) {
+    toast('Could not reach RUCKUS One.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+$('r1Pull').onclick = pullFromR1;
+
+// apsToLines flattens the chosen venues to "ip,name" lines, dropping a repeated
+// address: the same private IP in two venues becomes one target, and the run's
+// own R1 lookup still tries every venue's password for it.
+function apsToLines(venues) {
+  const seen = new Set();
+  const lines = [];
+  let dup = 0;
+  for (const v of venues) {
+    for (const ap of v.aps) {
+      if (seen.has(ap.ip)) { dup++; continue; }
+      seen.add(ap.ip);
+      lines.push(ap.ip + (ap.name ? ',' + ap.name : ''));
+    }
+  }
+  return { lines, dup };
+}
+
+function fillTargetsFromVenues(venues) {
+  const { lines, dup } = apsToLines(venues);
+  $('hosts').value = lines.length ? lines.join('\n') + '\n' : '';
+  hostsChanged();
+  const from = venues.length === 1 ? venues[0].name : `${venues.length} venues`;
+  toast(`Loaded ${lines.length} address${lines.length === 1 ? '' : 'es'} from ${from}` +
+    (dup ? `; ${dup} duplicate${dup === 1 ? '' : 's'} merged` : '') + '.');
+}
+
+// ---- the venue picker ----
+
+function openR1Picker() {
+  const list = $('r1VenueList');
+  list.replaceChildren(...r1Venues.map((v, i) => {
+    const row = document.createElement('label');
+    row.className = 'check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'r1v';
+    cb.dataset.i = String(i);
+    cb.addEventListener('change', r1PickChanged);
+    const span = document.createElement('span');
+    const extra = v.noIp ? ` (+${v.noIp} without an address)` : '';
+    span.textContent = ` ${v.name} — ${v.aps.length} AP${v.aps.length === 1 ? '' : 's'}${extra}`;
+    row.append(cb, span);
+    return row;
+  }));
+  $('r1All').checked = false;
+  $('r1PickHint').textContent = `${r1Venues.length} venues. Choose one, several, or all.`;
+  $('r1Conflict').hidden = true;
+  r1PickChanged();
+  $('r1Picker').hidden = false;
+}
+
+function selectedR1Venues() {
+  return [...document.querySelectorAll('#r1VenueList .r1v')]
+    .filter((c) => c.checked).map((c) => r1Venues[+c.dataset.i]);
+}
+
+// The same address in more than one chosen venue is the conflict the request
+// asked to flag: across sites, private ranges repeat. It is a warning, not a
+// block — each address is still added once and the run sorts out the password.
+function r1PickChanged() {
+  const sel = selectedR1Venues();
+  $('r1PickAdd').disabled = sel.length === 0;
+  const where = new Map();
+  for (const v of sel) {
+    for (const ap of v.aps) {
+      if (!where.has(ap.ip)) where.set(ap.ip, new Set());
+      where.get(ap.ip).add(v.name);
+    }
+  }
+  const clashes = [...where.entries()].filter(([, s]) => s.size > 1);
+  const el = $('r1Conflict');
+  if (!clashes.length) { el.hidden = true; el.textContent = ''; return; }
+  const shown = clashes.slice(0, 5).map(([ip, s]) => `${ip} (${[...s].join(', ')})`).join('; ');
+  el.hidden = false;
+  el.textContent = `⚠ ${clashes.length} address${clashes.length === 1 ? '' : 'es'} in more than one selected venue: ${shown}${clashes.length > 5 ? '…' : ''}. Each is added once; a run tries every matching venue's password.`;
+}
+
+$('r1All').addEventListener('change', () => {
+  document.querySelectorAll('#r1VenueList .r1v').forEach((c) => { c.checked = $('r1All').checked; });
+  r1PickChanged();
+});
+$('r1PickCancel').onclick = () => { $('r1Picker').hidden = true; };
+$('r1PickAdd').onclick = () => {
+  const sel = selectedR1Venues();
+  if (!sel.length) return;
+  $('r1Picker').hidden = true;
+  fillTargetsFromVenues(sel);
+};
 
 /* ---------- firmware server ---------- */
 

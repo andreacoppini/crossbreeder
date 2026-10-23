@@ -150,6 +150,20 @@ the original tool are sitting on `Crossbreeder` as their password, so it is
 often what belongs in the **AP password** field too. Leave it empty and those APs are reported
 as needing one and skipped, rather than being guessed at.
 
+### Pulling the address list from RUCKUS One
+
+You do not have to paste addresses at all for an R1-managed estate. Fill in the
+**RUCKUS One** section of the console, then press **From RUCKUS One** above the
+Targets box. It reads your tenant and, if there is more than one venue (space),
+shows you the list to pick from — one, several, or all. The chosen venues' APs
+drop into Targets, one per line, with the AP's name as a second column (the run
+ignores everything after the address).
+
+If the same address turns up in more than one selected venue — private ranges
+repeat across sites — it is **flagged** as you pick, and added once; a run then
+tries every matching venue's password for it. It is a console-only feature, as
+it needs the venue picker.
+
 ### Pulling AP passwords from RUCKUS One
 
 APs adopted by RUCKUS One do not keep a password you can type: R1 sets a
@@ -220,6 +234,13 @@ question for RUCKUS, not something the tool can work around.
 One line per change, newest first. `!)` marks something that changes behaviour
 you may be relying on; `*)` is everything else. The pull request has the detail
 and the reasoning.
+
+What's new in 1.0.10 (2026-10-23):
+
+```
+*) r1 - pull the AP address list from RUCKUS One into Targets, picking which venues (#20);
+*) r1 - warn when an address is in more than one selected venue (#20);
+```
 
 What's new in 1.0.9 (2026-10-23):
 

@@ -69,6 +69,7 @@ func serveUI(opt options) error {
 	mux.HandleFunc("/api/browse", u.handleBrowse)
 	mux.HandleFunc("/api/firmware", u.handleFirmware)
 	mux.HandleFunc("/api/update", u.handleUpdate)
+	mux.HandleFunc("/api/r1/inventory", u.handleR1Inventory)
 
 	fmt.Printf("Crossbreeder Plus %s\nConsole: %s\n(leave this window open; close it or press Ctrl-C to quit)\n", version, url)
 	openBrowser(url)
@@ -383,6 +384,38 @@ func (u *uiServer) handleServerStatus(w http.ResponseWriter, r *http.Request) {
 func (u *uiServer) handleIPs(w http.ResponseWriter, r *http.Request) {
 	hosts, _ := parseHostsText(r.URL.Query().Get("hosts"))
 	writeJSON(w, map[string]any{"ips": serveIPChoices(hosts)})
+}
+
+// handleR1Inventory signs in to RUCKUS One with the credentials from the form
+// and returns the tenant's venues with their APs, for the browser's "pull
+// addresses" picker. It is a read-only lookup; nothing about a run happens here.
+func (u *uiServer) handleR1Inventory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req runRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		httpErr(w, err)
+		return
+	}
+	ctx := r.Context()
+	c, err := newR1Client(ctx, req.R1Region, req.R1Tenant, req.R1ClientID, req.R1Secret)
+	if err != nil {
+		httpErr(w, err)
+		return
+	}
+	venues, err := c.listVenues(ctx)
+	if err != nil {
+		httpErr(w, err)
+		return
+	}
+	aps, err := c.listAPs(ctx)
+	if err != nil {
+		httpErr(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"venues": groupR1Inventory(venues, aps)})
 }
 
 func (u *uiServer) handleBrowse(w http.ResponseWriter, r *http.Request) {
