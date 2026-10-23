@@ -123,6 +123,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 92px; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
+
+/* Targets buttons: Load file… and From RUCKUS One stacked, Clear beside them
+   spanning both rows. Clear is narrower — it earns less room than the two
+   that pull a list in. */
+.targetBtns { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.targetBtns #pick { grid-column: 1; grid-row: 1; }
+.targetBtns #r1Pull { grid-column: 1; grid-row: 2; }
+.targetBtns #clear { grid-column: 2; grid-row: 1 / span 2; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check.disabled { opacity: .45; cursor: not-allowed; }
 .check input { accent-color: var(--accent); }
