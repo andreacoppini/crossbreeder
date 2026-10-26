@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +36,8 @@ func TestR1ResolverTriesAllForDuplicateIP(t *testing.T) {
 	f.passwords = map[string]string{"SN-A": "pw-a", "SN-B": "pw-b", "SN-C": "pw-c"}
 
 	r := resolverWith(t, f, "admin")
-	creds, matched, pulled := r.credentialsFor(context.Background(), []string{"192.168.1.50"})
+	pull := r.credentialsFor(context.Background(), []string{"192.168.1.50"})
+	creds, matched, pulled := pull.Creds, pull.Matched, pull.Pulled
 
 	if matched != 1 {
 		t.Errorf("matched = %d, want 1 address", matched)
@@ -73,7 +75,8 @@ func TestR1ResolverSkipsUnreachableAndDenied(t *testing.T) {
 
 	r := resolverWith(t, f, "admin")
 	// Only .1 and .2 were reachable; .3 is not in the alive list.
-	creds, matched, pulled := r.credentialsFor(context.Background(), []string{"10.0.0.1", "10.0.0.2"})
+	pull := r.credentialsFor(context.Background(), []string{"10.0.0.1", "10.0.0.2"})
+	creds, matched, pulled := pull.Creds, pull.Matched, pull.Pulled
 
 	if matched != 2 {
 		t.Errorf("matched = %d, want 2", matched)
@@ -89,5 +92,82 @@ func TestR1ResolverSkipsUnreachableAndDenied(t *testing.T) {
 	}
 	if f.pwCalls.Load() != 2 {
 		t.Errorf("password endpoint hit %d times, want 2 (only the reached APs)", f.pwCalls.Load())
+	}
+}
+
+// The read-only-key case, as seen on a live tenant: R1 answers 200 with the
+// password blanked to asterisks. It must be counted as masked and never become
+// a credential — sending "**********" fails every login.
+func TestR1MaskedPasswordIsNeverSent(t *testing.T) {
+	f := newFakeR1(t)
+	f.aps = []r1AP{
+		{Serial: "SN-1", VenueID: "v", IP: "10.4.28.71"},
+		{Serial: "SN-2", VenueID: "v", IP: "10.4.28.68"},
+	}
+	f.passwords = map[string]string{"SN-1": "**********", "SN-2": "**********"}
+
+	r := resolverWith(t, f, "admin")
+	pull := r.credentialsFor(context.Background(), []string{"10.4.28.71", "10.4.28.68"})
+
+	if pull.Masked != 2 || pull.Pulled != 0 {
+		t.Fatalf("masked = %d, pulled = %d; want 2 masked, 0 pulled", pull.Masked, pull.Pulled)
+	}
+	if len(pull.Creds) != 0 {
+		t.Fatalf("a masked password became a credential: %v", pull.Creds)
+	}
+
+	lines := r1PullSummary(pull, 2)
+	if len(lines) != 2 || !strings.Contains(lines[1], "every password masked") ||
+		!strings.Contains(lines[1], "read-only") {
+		t.Errorf("all-masked run should warn about the API key; got %q", lines)
+	}
+}
+
+// A mix: real passwords are used, masked ones skipped, and the warning names
+// how many were dropped rather than claiming the key is useless.
+func TestR1MixedMaskedAndReal(t *testing.T) {
+	f := newFakeR1(t)
+	f.aps = []r1AP{
+		{Serial: "SN-1", VenueID: "v", IP: "10.0.0.1"},
+		{Serial: "SN-2", VenueID: "v", IP: "10.0.0.2"},
+	}
+	f.passwords = map[string]string{"SN-1": "jZS^M3#k6u8J#6*i", "SN-2": "*****"}
+
+	r := resolverWith(t, f, "admin")
+	pull := r.credentialsFor(context.Background(), []string{"10.0.0.1", "10.0.0.2"})
+
+	if pull.Pulled != 1 || pull.Masked != 1 {
+		t.Fatalf("pulled = %d, masked = %d; want 1 and 1", pull.Pulled, pull.Masked)
+	}
+	if got := pull.Creds["10.0.0.1"]; len(got) != 1 || got[0].Password != "jZS^M3#k6u8J#6*i" {
+		t.Errorf("real password lost: %v", got)
+	}
+	if _, ok := pull.Creds["10.0.0.2"]; ok {
+		t.Error("the masked AP must not carry a credential")
+	}
+	lines := r1PullSummary(pull, 2)
+	if len(lines) != 2 || !strings.Contains(lines[1], "1 password(s) masked") {
+		t.Errorf("mixed run should say how many were skipped; got %q", lines)
+	}
+}
+
+// Detection is "nothing but asterisks". A real R1 password can contain an
+// asterisk — the one that logged in above does — and must not be mistaken for
+// a mask.
+func TestIsMaskedPassword(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"**********", true},
+		{"*", true},
+		{"jZS^M3#k6u8J#6*i", false}, // real, contains '*'
+		{"*a*", false},
+		{"", false}, // empty is "no password", handled separately
+		{"#M^o!Eu#Y19t9H2b", false},
+	} {
+		if got := isMaskedPassword(tc.in); got != tc.want {
+			t.Errorf("isMaskedPassword(%q) = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }

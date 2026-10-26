@@ -125,6 +125,17 @@ localhost. Everything it can do is also available as flags: run it with `-h`.
 
 ## Fixed
 
+- **A masked RUCKUS One password is no longer sent to the AP**
+  ([#21](https://github.com/andreacoppini/crossbreeder/pull/21)). A read-only
+  R1 API key is allowed to ask for an AP's password but gets it back blanked
+  out as `**********`. That arrives as a successful answer, and it was being
+  passed straight to the AP — so every login failed, and it looked like the
+  APs were rejecting good credentials. A password made of nothing but asterisks
+  is now recognised and skipped. The log reports how many came back masked, and
+  when all of them did, says plainly that the API key lacks the rights to read
+  them and that only the typed credentials will be tried. Use a key with
+  administrator rights to pull the real passwords.
+
 - **The Windows binaries report an unmodified source tree again.** The version
   resource is now generated from a gitignored copy of `versioninfo.json` rather
   than by rewriting the tracked file, so `go version -m` reports
