@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/andreacoppini/crossbreeder/ap"
@@ -55,16 +57,57 @@ func (r *r1Resolver) tenantAPs() int {
 	return n
 }
 
+// r1PullSummary turns a pull into the log lines the operator sees. The plain
+// line is always there; a masked result adds a warning, and when nothing but
+// masks came back it says outright what that means, because that is a
+// configuration problem the operator has to fix in RUCKUS One, not something
+// any number of retries will change.
+func r1PullSummary(p r1Pull, reachable int) []string {
+	line := fmt.Sprintf("RUCKUS One: matched %d of %d reachable address(es); pulled %d password(s)",
+		p.Matched, reachable, p.Pulled)
+	if p.Failed > 0 {
+		line += fmt.Sprintf("; %d could not be read", p.Failed)
+	}
+	out := []string{line}
+	switch {
+	case p.Masked > 0 && p.Pulled == 0:
+		out = append(out, fmt.Sprintf(
+			"WARNING: RUCKUS One returned every password masked (%d of %d as \"*****\"). "+
+				"This API key can see the APs but not their passwords — a read-only key does this. "+
+				"No R1 password will be tried; only the credentials you entered. "+
+				"Use an API key with administrator rights to pull the real passwords.",
+			p.Masked, p.Masked))
+	case p.Masked > 0:
+		out = append(out, fmt.Sprintf(
+			"WARNING: RUCKUS One returned %d password(s) masked as \"*****\"; those were skipped, not sent. "+
+				"This API key may lack the rights to read them.", p.Masked))
+	}
+	return out
+}
+
+// r1Pull is what pulling passwords for a run produced. Creds is read-only once
+// returned. The counts are for the operator: how many reachable addresses R1
+// matched, how many real passwords came back, how many R1 answered with a
+// masked placeholder, and how many could not be read at all.
+type r1Pull struct {
+	Creds   map[string][]ap.Credentials
+	Matched int
+	Pulled  int
+	Masked  int
+	Failed  int
+}
+
 // credentialsFor pulls the current password for every given address that R1
-// knows, concurrently, and returns a read-only map of address to the
-// credentials to try first. A duplicate address — the same private IP in two
-// venues — yields one credential per candidate, so the engine can try them all,
-// which is exactly the case this was asked to handle. An address R1 does not
-// know, or whose password this account cannot read, is simply absent.
+// knows, concurrently. A duplicate address — the same private IP in two venues
+// — yields one credential per candidate, so the engine can try them all. An
+// address R1 does not know, or whose password this account cannot read, is
+// simply absent.
 //
-// The two counts are for the operator: how many of the reachable addresses R1
-// matched, and how many passwords actually came back.
-func (r *r1Resolver) credentialsFor(ctx context.Context, ips []string) (creds map[string][]ap.Credentials, matched, pulled int) {
+// A masked password ("**********", what a read-only API key gets) is the case
+// to be careful with: it is a 200 with a value in it, so it looks like success.
+// It is counted and dropped here, never turned into a credential — sending it
+// fails every login and makes the AP look like the problem.
+func (r *r1Resolver) credentialsFor(ctx context.Context, ips []string) r1Pull {
 	type task struct {
 		ip string
 		ap r1AP
@@ -78,7 +121,7 @@ func (r *r1Resolver) credentialsFor(ctx context.Context, ips []string) (creds ma
 		}
 	}
 
-	creds = make(map[string][]ap.Credentials)
+	out := r1Pull{Creds: make(map[string][]ap.Credentials), Matched: len(seenIP)}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, r.conc)
@@ -89,15 +132,19 @@ func (r *r1Resolver) credentialsFor(ctx context.Context, ips []string) (creds ma
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			pw, err := r.client.apPassword(ctx, t.ap.VenueID, t.ap.Serial)
-			if err != nil || pw == "" {
-				return
-			}
 			mu.Lock()
-			creds[t.ip] = append(creds[t.ip], ap.Credentials{User: r.user, Password: pw})
-			pulled++
-			mu.Unlock()
+			defer mu.Unlock()
+			switch {
+			case errors.Is(err, errR1Masked):
+				out.Masked++
+			case err != nil || pw == "":
+				out.Failed++
+			default:
+				out.Creds[t.ip] = append(out.Creds[t.ip], ap.Credentials{User: r.user, Password: pw})
+				out.Pulled++
+			}
 		}(t)
 	}
 	wg.Wait()
-	return creds, len(seenIP), pulled
+	return out
 }

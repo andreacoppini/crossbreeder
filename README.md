@@ -197,10 +197,13 @@ How it behaves:
   simply skipped — the run carries on with whatever else you supplied.
 
 One caveat worth knowing before you rely on it: RUCKUS gates the password
-behind account role. A **VAR/partner** key reads it (confirmed); a plain
-end-customer key may be refused by RUCKUS with a 403, in which case the address
-is skipped and reported as pulling no password. That is an account-permission
-question for RUCKUS, not something the tool can work around.
+behind the API key's rights. A key with **administrator** rights reads the real
+password. A **read-only** key is allowed to make the call but gets the password
+back blanked out as `**********` — which looks like an answer, so Crossbreeder
+checks for it: a masked password is **never sent** to an AP. It is skipped and
+the log says so, and if every password came back masked it tells you the key is
+the problem. Use a key with administrator rights to pull real passwords; the
+credentials you type still apply either way.
 
 ## What it does
 
@@ -234,6 +237,13 @@ question for RUCKUS, not something the tool can work around.
 One line per change, newest first. `!)` marks something that changes behaviour
 you may be relying on; `*)` is everything else. The pull request has the detail
 and the reasoning.
+
+What's new in 1.0.11 (2026-10-26):
+
+```
+!) r1 - never send a password RUCKUS One returned masked; a read-only API key gets "**********" (#21);
+*) r1 - say how many passwords came back masked, and name the API key when all of them did (#21);
+```
 
 What's new in 1.0.10 (2026-10-23):
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -259,7 +260,23 @@ func (c *r1Client) apPassword(ctx context.Context, venueID, serial string) (stri
 	if err := json.Unmarshal(body, &p); err != nil {
 		return "", fmt.Errorf("unreadable response")
 	}
+	if isMaskedPassword(p.APPassword) {
+		return "", errR1Masked
+	}
 	return p.APPassword, nil
+}
+
+// errR1Masked means R1 answered 200 but blanked the password out with
+// asterisks. That is what a read-only API key gets: the call is allowed, the
+// secret is not. It must never reach an AP — sending "**********" as a password
+// fails every login and looks like the AP's fault.
+var errR1Masked = errors.New("RUCKUS One returned a masked password")
+
+// isMaskedPassword reports whether s is R1's placeholder rather than a real
+// password: non-empty and made of nothing but asterisks. A real AP password may
+// contain an asterisk (R1's own generator uses them), but never only those.
+func isMaskedPassword(s string) bool {
+	return s != "" && strings.Trim(s, "*") == ""
 }
 
 // r1Reason pulls a short human message out of an R1 error body, falling back to

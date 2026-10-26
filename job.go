@@ -249,11 +249,11 @@ func runJob(ctx context.Context, opt options, hosts []string, cfg ap.Config, emi
 	// passwords. Each rotates daily, so this is deliberately at run time.
 	var r1creds map[string][]ap.Credentials
 	if r1res != nil {
-		var matched, pulled int
-		r1creds, matched, pulled = r1res.credentialsFor(ctx, alive)
-		emit(Event{Kind: EvLog, Message: fmt.Sprintf(
-			"RUCKUS One: matched %d of %d reachable address(es); pulled %d password(s)",
-			matched, len(alive), pulled)})
+		pull := r1res.credentialsFor(ctx, alive)
+		r1creds = pull.Creds
+		for _, line := range r1PullSummary(pull, len(alive)) {
+			emit(Event{Kind: EvLog, Message: line})
+		}
 	}
 
 	// Phase 2 — SSH, over the survivors only.
